@@ -109,6 +109,9 @@ function PagesContent() {
                 <Route path="/OfficeAppointments" element={<RoleGuard roles={["office_executive","clinic_admin"]}> <OfficeAppointments /> </RoleGuard>} />
                 
                 <Route path="/Notifications" element={<RoleGuard roles={[]}> <Notifications /> </RoleGuard>} />
+                <Route path="/Settings" element={<RoleGuard roles={[]}> <Settings /> </RoleGuard>} />
+                {/* lowercase alias */}
+                <Route path="/settings" element={<RoleGuard roles={[]}> <Settings /> </RoleGuard>} />
                 {/* Prescription & Records */}
                 <Route path="/PrescriptionRecords" element={<RoleGuard roles={["doctor","patient","office_executive"]}> <PrescriptionRecords /> </RoleGuard>} />
                 <Route path="/Reports" element={<RoleGuard roles={["super_admin","clinic_admin","doctor"]}> <ReportsLive /> </RoleGuard>} />
