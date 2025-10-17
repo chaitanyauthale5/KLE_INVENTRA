@@ -51,6 +51,8 @@ export default function NotificationsPage() {
       try {
         const user = await User.me();
         setMe(user);
+        // super_admin should only see outgoing; default tab accordingly
+        setActiveTab(user?.role === 'super_admin' ? 'outgoing' : 'incoming');
         // load drafts for this user
         try {
           const raw = localStorage.getItem(`notif_drafts_${user.id}`);
@@ -68,13 +70,19 @@ export default function NotificationsPage() {
           setClinicStaff(staff || []);
         }
 
-        // load incoming and outgoing lists
-        const [inc, out] = await Promise.all([
-          Notification.filter({ recipient_id: user.id }, "-created_date", 100).catch(() => []),
-          Notification.filter({ sender_id: user.id }, "-created_date", 100).catch(() => []),
-        ]);
-        setIncoming(inc || []);
-        setOutgoing(out || []);
+        // load lists: super_admin => outgoing only
+        if (user.role === 'super_admin') {
+          const out = await Notification.filter({ sender_id: user.id }, "-created_date", 100).catch(() => []);
+          setIncoming([]);
+          setOutgoing(out || []);
+        } else {
+          const [inc, out] = await Promise.all([
+            Notification.filter({ recipient_id: user.id }, "-created_date", 100).catch(() => []),
+            Notification.filter({ sender_id: user.id }, "-created_date", 100).catch(() => []),
+          ]);
+          setIncoming(inc || []);
+          setOutgoing(out || []);
+        }
       } catch (error) {
         console.error("Failed to load notifications:", error);
       }
@@ -240,7 +248,7 @@ export default function NotificationsPage() {
 
   // Only admins can send; patients should never see outgoing
   const canSend = me?.role === 'super_admin' || me?.role === 'clinic_admin' || me?.role === 'doctor' || me?.role === 'office_executive';
-  const list = canSend && activeTab === 'outgoing' ? outgoing : incoming;
+  const list = me?.role === 'super_admin' ? outgoing : (canSend && activeTab === 'outgoing' ? outgoing : incoming);
   const filteredNotifications = list.filter((n) => {
     // status filter
     if (filterStatus === 'unread') {
@@ -290,7 +298,7 @@ export default function NotificationsPage() {
       </div>
 
       {/* Tabs (only for roles that can send) */}
-      {canSend && (
+      {canSend && me?.role !== 'super_admin' && (
         <div className="flex items-center gap-2 mb-6">
           <button onClick={()=>setActiveTab('incoming')} className={`px-4 py-2 rounded-xl border ${activeTab==='incoming'?'bg-white shadow':'bg-gray-50 hover:bg-white'} `}>Incoming</button>
           <button onClick={()=>setActiveTab('outgoing')} className={`px-4 py-2 rounded-xl border ${activeTab==='outgoing'?'bg-white shadow':'bg-gray-50 hover:bg-white'} `}>Outgoing</button>

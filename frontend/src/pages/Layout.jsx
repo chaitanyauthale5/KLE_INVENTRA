@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import PropTypes from 'prop-types';
 import { Link, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { User } from "@/services";
+import { User, Notification } from "@/services";
 import LandingPageComponent from "../components/landing/LandingPageComponent";
 import AIAvatarAssistant from "../components/avatar/AIAvatarAssistant";
 import AIDoctorBot from "../components/doctor/AIDoctorBot";
@@ -30,7 +30,7 @@ const clinicAdminNavItems = [
   { title: "Doctors & Staff", url: "Staff", icon: UserCheck },
   { title: "Scheduled Therapies", url: "TherapyScheduling", icon: Calendar },
   { title: "Reports", url: "Reports", icon: FileText },
-  { title: "Notifications", url: "Notifications", icon: Bell },
+  { title: "Notifications", url: "Notifications", icon: Bell }, 
 ];
 
 const doctorNavItems = [
@@ -48,7 +48,6 @@ const patientNavItems = [
   { title: "My Schedule", url: "PatientSchedule", icon: Calendar },
   { title: "Prescriptions", url: "PrescriptionRecords", icon: FileText },
   { title: "Analytics & Report", url: "PatientAnalytics", icon: BarChart3 },
-  { title: "Notifications", url: "Notifications", icon: Bell },
 ];
 
 const officeExecutiveNavItems = [
@@ -94,6 +93,10 @@ const AppShell = ({ currentUser, handleLogout, children, navigateToLanding }) =>
   const location = useLocation();
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -104,13 +107,53 @@ const AppShell = ({ currentUser, handleLogout, children, navigateToLanding }) =>
       if (isMobileMenuOpen && !event.target.closest('.mobile-menu-container')) {
         setIsMobileMenuOpen(false);
       }
+      if (isNotifOpen && !event.target.closest('.notifications-dropdown-container')) {
+        setIsNotifOpen(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isProfileMenuOpen, isMobileMenuOpen]);
+  }, [isProfileMenuOpen, isMobileMenuOpen, isNotifOpen]);
+
+  // Load incoming notifications for current user (all roles)
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    let active = true;
+    const load = async () => {
+      try {
+        setNotifLoading(true);
+        const inc = await Notification.list().catch(() => []);
+        if (!active) return;
+        setNotifications(Array.isArray(inc) ? inc : []);
+        setUnreadCount((Array.isArray(inc) ? inc : []).filter(n => !n.is_read).length);
+      } finally {
+        if (active) setNotifLoading(false);
+      }
+    };
+    load();
+    const iv = setInterval(load, 60000);
+    return () => { active = false; clearInterval(iv); };
+  }, [currentUser?.id]);
+
+  const markNotifAsRead = async (id) => {
+    try {
+      await Notification.update(id, { is_read: true });
+      setNotifications(ns => ns.map(n => (n.id === id ? { ...n, is_read: true } : n)));
+      setUnreadCount(c => Math.max(0, c - 1));
+    } catch {}
+  };
+
+  const markAllNotifsRead = async () => {
+    try {
+      const ids = notifications.filter(n => !n.is_read).map(n => n.id);
+      await Promise.all(ids.map(id => Notification.update(id, { is_read: true })));
+      setNotifications(ns => ns.map(n => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+    } catch {}
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-green-50/30">
@@ -306,8 +349,69 @@ const AppShell = ({ currentUser, handleLogout, children, navigateToLanding }) =>
               ))}
             </nav>
 
-            {/* Profile Menu & Mobile Menu Trigger */}
+            {/* Profile Menu, Patient Notifications & Mobile Menu Trigger */}
             <div className="flex items-center gap-2">
+              {/* Notifications bell (incoming only) - shown for all roles */}
+              <div className="relative notifications-dropdown-container">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setIsNotifOpen(!isNotifOpen); }}
+                    className="p-2 md:p-3 bg-white/15 rounded-2xl text-white hover:bg-white/25 transition-colors relative border border-white/20 shadow-lg"
+                    aria-label="Notifications"
+                  >
+                    <Bell className="w-5 h-5 md:w-6 md:h-6" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] md:text-xs leading-none rounded-full px-1.5 py-0.5">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
+                  </button>
+                  <AnimatePresence>
+                    {isNotifOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                        className="profile-dropdown bg-white/98 backdrop-blur-xl rounded-2xl p-4 md:p-5 shadow-2xl border border-white/50 mt-2 w-80 md:w-96"
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2 text-gray-700 font-semibold">
+                            <Bell className="w-4 h-4" /> Notifications
+                          </div>
+                          {unreadCount > 0 && (
+                            <button onClick={markAllNotifsRead} className="text-xs text-blue-600 hover:underline">Mark all as read</button>
+                          )}
+                        </div>
+                        <div className="max-h-80 overflow-auto space-y-2">
+                          {notifLoading ? (
+                            [...Array(4)].map((_, i) => (
+                              <div key={i} className="h-12 bg-gray-100 rounded-xl animate-pulse" />
+                            ))
+                          ) : notifications.length ? (
+                            notifications.slice(0, 10).map(n => (
+                              <div
+                                key={n.id}
+                                className={`p-3 rounded-xl border ${n.is_read ? 'bg-white border-gray-100' : 'bg-blue-50 border-blue-100'}`}
+                                onClick={() => markNotifAsRead(n.id)}
+                              >
+                                <div className="flex justify-between items-start gap-2">
+                                  <div className="font-medium text-gray-800 line-clamp-1">{n.title || 'Notification'}</div>
+                                  {!n.is_read && <span className="w-2 h-2 rounded-full bg-blue-500 mt-1.5" />}
+                                </div>
+                                {n.message && <div className="text-xs text-gray-600 mt-0.5 line-clamp-2">{n.message}</div>}
+                                {n.created_date && <div className="text-[10px] text-gray-400 mt-1">{new Date(n.created_date).toLocaleString()}</div>}
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-center text-gray-500 py-8">
+                              <Bell className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                              <div className="text-sm">No notifications</div>
+                            </div>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               <div className="relative profile-dropdown-container">
                 <button
                   onClick={(e) => {

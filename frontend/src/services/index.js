@@ -353,7 +353,44 @@ export const Prescription = {
 
 // Stubs kept for compile-time imports that may exist elsewhere
 export const Feedback = { list: async () => [], filter: async () => [], create: async () => ({}), update: async () => ({}), delete: async () => ({}) };
-export const Notification = { list: async () => [], filter: async () => [], create: async () => ({}), update: async () => ({}), delete: async () => ({}) };
+export const Notification = {
+  async list() {
+    const data = await api('/api/notifications');
+    return (data?.notifications || []).map(normalizeId).map(n => ({
+      ...n,
+      created_date: n.createdAt || n.created_date,
+      is_read: typeof n.read === 'boolean' ? n.read : n.is_read,
+    }));
+  },
+  async listOutgoing() {
+    const data = await api('/api/notifications?sent_by_me=1');
+    return (data?.notifications || []).map(normalizeId).map(n => ({
+      ...n,
+      created_date: n.createdAt || n.created_date,
+      is_read: typeof n.read === 'boolean' ? n.read : n.is_read,
+    }));
+  },
+  async filter(_query = {}, _sort = '-created_date', _limit = 200) {
+    // If filtering for items sent by current user, use backend sent_by_me flag
+    const wantsOutgoing = _query && (Object.prototype.hasOwnProperty.call(_query, 'sender_id') || _query.sent_by_me);
+    const arr = wantsOutgoing ? await this.listOutgoing() : await this.list();
+    return Array.isArray(arr) ? arr.slice(0, _limit) : [];
+  },
+  async create(payload) {
+    // Only admins/super_admins allowed by backend
+    const data = await api('/api/notifications', { method: 'POST', body: payload });
+    return normalizeId(data?.notification || data);
+  },
+  async update(id, body) {
+    if (body && (body.is_read === true || body.read === true)) {
+      const data = await api(`/api/notifications/${id}/read`, { method: 'PATCH' });
+      return normalizeId(data?.notification || data);
+    }
+    // No generic update route; return noop
+    return {};
+  },
+  async markRead(id) { return this.update(id, { is_read: true }); },
+};
 export const ConsultationLog = { list: async () => [], filter: async () => [], create: async () => ({}), update: async () => ({}), delete: async () => ({}) };
 
 // Super Admin API client
