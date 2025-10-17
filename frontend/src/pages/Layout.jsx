@@ -28,7 +28,7 @@ const clinicAdminNavItems = [
   { title: "Clinic Dashboard", url: "Dashboard", icon: Home },
   { title: "Patients", url: "Patients", icon: Users },
   { title: "Doctors & Staff", url: "Staff", icon: UserCheck },
-  { title: "Therapy Scheduling", url: "TherapyScheduling", icon: Calendar },
+  { title: "Scheduled Therapies", url: "TherapyScheduling", icon: Calendar },
   { title: "Reports", url: "Reports", icon: FileText },
   { title: "Notifications", url: "Notifications", icon: Bell },
 ];
