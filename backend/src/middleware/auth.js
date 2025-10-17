@@ -6,8 +6,14 @@ export function requireAuth(req, res, next) {
     const auth = req.headers.authorization || '';
     const [, token] = auth.split(' ');
     if (!token) return res.status(401).json({ message: 'Unauthorized' });
-    const secret = process.env.JWT_SECRET;
-    if (!secret) throw new Error('JWT_SECRET not set');
+    let secret = process.env.JWT_SECRET;
+    if (!secret) {
+      if (process.env.NODE_ENV !== 'production') {
+        secret = 'insecure-dev-secret-change-me';
+      } else {
+        throw new Error('JWT_SECRET not set');
+      }
+    }
     const payload = jwt.verify(token, secret);
     req.userId = payload.sub;
     return next();

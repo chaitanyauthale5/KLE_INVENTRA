@@ -4,9 +4,17 @@ import { validationResult } from 'express-validator';
 import { User } from '../models/User.js';
 
 const signToken = (userId) => {
-  const secret = process.env.JWT_SECRET;
+  let secret = process.env.JWT_SECRET;
   const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
-  if (!secret) throw new Error('JWT_SECRET not set');
+  if (!secret) {
+    if (process.env.NODE_ENV !== 'production') {
+      // Dev fallback to prevent signin failures when JWT_SECRET is not configured locally
+      secret = 'insecure-dev-secret-change-me';
+      console.warn('[Auth] JWT_SECRET missing; using insecure dev fallback. Configure JWT_SECRET in .env for production.');
+    } else {
+      throw new Error('JWT_SECRET not set');
+    }
+  }
   return jwt.sign({ sub: userId }, secret, { expiresIn });
 };
 
@@ -62,7 +70,7 @@ export const signin = async (req, res) => {
     let user = null;
     const ident = String(identifier || '').trim();
     if (ident.includes('@')) {
-      user = await User.findOne({ email: ident });
+      user = await User.findOne({ email: ident.toLowerCase() });
     }
     if (!user && /^\d{6,}$/.test(ident)) {
       user = await User.findOne({ phone: ident });
@@ -78,10 +86,26 @@ export const signin = async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+    // Support both hashed and legacy plaintext passwords with auto-upgrade
+    let ok = false;
+    const stored = user.passwordHash || '';
+    const isBcrypt = /^\$2[aby]\$/.test(String(stored));
+    if (isBcrypt) {
+      ok = await bcrypt.compare(password, stored);
+    } else {
+      // Legacy plaintext; compare directly and upgrade to hash
+      if (String(stored) === String(password)) {
+        ok = true;
+        try {
+          const salt = await bcrypt.genSalt(10);
+          user.passwordHash = await bcrypt.hash(String(password), salt);
+          await user.save();
+        } catch (e) {
+          // best-effort upgrade; proceed even if saving fails
+        }
+      }
     }
+    if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
 
     const token = signToken(user._id);
 

@@ -293,7 +293,12 @@ export const createHospital = async (req, res) => {
     if (!(isSuperAdmin(req.user) || isAdmin(req.user) || isHospitalAdmin(req.user))) {
       return res.status(403).json({ message: 'Forbidden' });
     }
-    const hospital = await Hospital.create(req.body);
+    const payload = { ...req.body };
+    // Link clinic to the creating super admin
+    if (isSuperAdmin(req.user)) {
+      payload.super_admin_id = req.user._id;
+    }
+    const hospital = await Hospital.create(payload);
     // If creator is not super admin, auto-assign this hospital to them if they don't already have one
     if (!isSuperAdmin(req.user)) {
       try {

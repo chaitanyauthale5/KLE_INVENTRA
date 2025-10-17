@@ -13,7 +13,7 @@ export default function SuperClinics() {
   const [statsMap, setStatsMap] = useState({});
   const [showModal, setShowModal] = useState(false);
   const [editingClinic, setEditingClinic] = useState(null);
-  const [form, setForm] = useState({ name: "", city: "", state: "", email: "" });
+  const [form, setForm] = useState({ name: "", city: "", state: "", email: "", adminEmail: "", adminPassword: "" });
   const [selectedClinic, setSelectedClinic] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [clinicDetails, setClinicDetails] = useState({
@@ -100,13 +100,13 @@ export default function SuperClinics() {
 
   const openCreate = () => {
     setEditingClinic(null);
-    setForm({ name: "", city: "", state: "", email: "" });
+    setForm({ name: "", city: "", state: "", email: "", adminEmail: "", adminPassword: "" });
     setShowModal(true);
   };
 
   const openEdit = (clinic) => {
     setEditingClinic(clinic);
-    setForm({ name: clinic.name || "", city: clinic.city || "", state: clinic.state || "", email: clinic.email || "" });
+    setForm({ name: clinic.name || "", city: clinic.city || "", state: clinic.state || "", email: clinic.email || "", adminEmail: "", adminPassword: "" });
     setShowModal(true);
   };
 
@@ -117,7 +117,20 @@ export default function SuperClinics() {
       if (editingClinic) {
         await Hospital.update(editingClinic._id || editingClinic.id, form);
       } else {
-        await Hospital.create(form);
+        const { name, city, state, email, adminEmail, adminPassword } = form;
+        const created = await Hospital.create({ name, city, state, email });
+        const hospitalId = created?.id || created?._id;
+        if (hospitalId && adminEmail && adminPassword) {
+          try {
+            await SuperAdmin.createClinicAdmin(hospitalId, {
+              full_name: `${name} Admin`,
+              email: adminEmail,
+              password: adminPassword,
+            });
+          } catch (err) {
+            window.showNotification?.({ type: 'error', title: 'Admin not created', message: err?.details?.message || err.message || 'Failed to create clinic admin' });
+          }
+        }
       }
       setShowModal(false);
       // reload
@@ -339,6 +352,18 @@ export default function SuperClinics() {
                 <label className="block text-xs text-gray-500">Email</label>
                 <input type="email" value={form.email} onChange={(e)=>setForm(f=>({...f, email:e.target.value}))} className="w-full border rounded-lg px-3 py-2" placeholder="contact@example.com" />
               </div>
+              {!editingClinic && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500">Admin Email</label>
+                    <input type="email" value={form.adminEmail} onChange={(e)=>setForm(f=>({...f, adminEmail:e.target.value}))} className="w-full border rounded-lg px-3 py-2" placeholder="admin@example.com" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500">Admin Password</label>
+                    <input type="password" value={form.adminPassword} onChange={(e)=>setForm(f=>({...f, adminPassword:e.target.value}))} className="w-full border rounded-lg px-3 py-2" placeholder="min 6 characters" />
+                  </div>
+                </div>
+              )}
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={()=>setShowModal(false)} className="px-4 py-2 rounded-lg bg-gray-100">Cancel</button>
                 <button type="submit" className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-green-600 text-white">{editingClinic ? 'Save Changes' : 'Create Clinic'}</button>
