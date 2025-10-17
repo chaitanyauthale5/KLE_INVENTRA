@@ -98,6 +98,48 @@ export const Hospital = {
   },
 };
 
+// Clinic Inventory: Rooms
+export const Rooms = {
+  async list(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    const data = await api(`/api/rooms${qs ? `?${qs}` : ''}`);
+    return (data?.rooms || []).map(normalizeId);
+  },
+  async create(body) {
+    const data = await api('/api/rooms', { method: 'POST', body });
+    return normalizeId(data?.room || data);
+  },
+  async update(id, body) {
+    const data = await api(`/api/rooms/${id}`, { method: 'PUT', body });
+    return normalizeId(data?.room || data);
+  },
+  async delete(id) {
+    await api(`/api/rooms/${id}`, { method: 'DELETE' });
+    return true;
+  }
+};
+
+// Clinic Inventory: Equipment
+export const Equipments = {
+  async list(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    const data = await api(`/api/equipment${qs ? `?${qs}` : ''}`);
+    return (data?.equipment || []).map(normalizeId);
+  },
+  async create(body) {
+    const data = await api('/api/equipment', { method: 'POST', body });
+    return normalizeId(data?.equipment || data);
+  },
+  async update(id, body) {
+    const data = await api(`/api/equipment/${id}`, { method: 'PUT', body });
+    return normalizeId(data?.equipment || data);
+  },
+  async delete(id) {
+    await api(`/api/equipment/${id}`, { method: 'DELETE' });
+    return true;
+  }
+};
+
 // Helper to transform backend patient -> UI shape expected by pages/components
 function mapPatientForUI(p) {
   const id = p.id || p._id;

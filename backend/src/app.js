@@ -10,6 +10,8 @@ import sessionRoutes from './routes/sessions.routes.js';
 import notificationRoutes from './routes/notifications.routes.js';
 import reportRoutes from './routes/reports.routes.js';
 import appointmentRoutes from './routes/appointments.routes.js';
+import roomRoutes from './routes/rooms.routes.js';
+import equipmentRoutes from './routes/equipments.routes.js';
 import superAdminRoutes from './routes/superadmin.routes.js';
 import prescriptionRoutes from './routes/prescriptions.routes.js';
 
@@ -75,6 +77,8 @@ app.use('/api/sessions', sessionRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/appointments', appointmentRoutes);
+app.use('/api/rooms', roomRoutes);
+app.use('/api/equipment', equipmentRoutes);
 app.use('/api/superadmin', superAdminRoutes);
 app.use('/api/prescriptions', prescriptionRoutes);
 

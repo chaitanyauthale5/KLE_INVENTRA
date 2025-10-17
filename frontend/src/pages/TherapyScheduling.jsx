@@ -32,9 +32,11 @@ function TherapyScheduling({ currentUser }) {
   const [staffList, setStaffList] = useState([]);
   const [self, setSelf] = useState(currentUser);
   
-  const [planForm, setPlanForm] = useState({ patientId: '', therapyType: '', count: 5, startDate: '', time: '10:00', intervalDays: 1, duration: 60, staffId: '', notes: '' });
+  const [planForm, setPlanForm] = useState({ patientId: '', therapyType: '', therapyOther: '', count: 5, startDate: '', time: '10:00', intervalDays: 1, duration: 60, staffId: '', notes: '' });
   const [planPreview, setPlanPreview] = useState([]);
   const [schedulingBusy, setSchedulingBusy] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
+  const [rows, setRows] = useState([]);
 
   // view-only: no calendar view
   // View-only: no scheduling/editing state
@@ -198,13 +200,82 @@ function TherapyScheduling({ currentUser }) {
 
   const canSchedule = (self?.role === 'clinic_admin' || self?.role === 'office_executive' || self?.role === 'super_admin');
 
+  const addRow = () => {
+    setRows(r => ([
+      ...r,
+      {
+        date: planForm.startDate || '',
+        time: planForm.time || '10:00',
+        therapyType: planForm.therapyType || '',
+        therapyOther: planForm.therapyOther || '',
+        duration: planForm.duration || 60,
+        staffId: planForm.staffId || '',
+      }
+    ]));
+  };
+
+  const updateRow = (idx, key, val) => {
+    setRows(prev => prev.map((r,i) => i === idx ? { ...r, [key]: val } : r));
+  };
+
+  const removeRow = (idx) => {
+    setRows(prev => prev.filter((_, i) => i !== idx));
+  };
+
   const handleGeneratePreview = () => {
-    const { patientId, therapyType, count, startDate, time, intervalDays, duration, staffId, notes } = planForm;
-    if (!patientId || !therapyType || !count || !startDate || !time) {
-      return window.showNotification?.({ type: 'error', title: 'Missing details', message: 'Select patient, therapy, start date and time, count.' });
+    const { patientId, therapyType, therapyOther, count, startDate, time, intervalDays, duration, staffId, notes } = planForm;
+    if (!patientId) {
+      return window.showNotification?.({ type: 'error', title: 'Missing patient', message: 'Select a patient.' });
+    }
+
+    // Advanced mode: build from rows
+    if (advanced) {
+      if (!rows.length) {
+        return window.showNotification?.({ type: 'error', title: 'No rows', message: 'Add at least one session row.' });
+      }
+      const out = [];
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        if (!r.date || !r.time) {
+          return window.showNotification?.({ type: 'error', title: 'Date/time required', message: `Row ${i+1}: Please set date and time.` });
+        }
+        if (!r.therapyType) {
+          return window.showNotification?.({ type: 'error', title: 'Therapy required', message: `Row ${i+1}: Select a therapy or choose Other and type.` });
+        }
+        if (r.therapyType === 'other' && !String(r.therapyOther || '').trim()) {
+          return window.showNotification?.({ type: 'error', title: 'Therapy required', message: `Row ${i+1}: Type therapy name for Other.` });
+        }
+        if (!r.staffId) {
+          return window.showNotification?.({ type: 'error', title: 'Therapist required', message: `Row ${i+1}: Assign a therapist.` });
+        }
+        const tType = r.therapyType === 'other' ? r.therapyOther.toLowerCase().trim().replace(/\s+/g, '_') : r.therapyType;
+        const iso = new Date(`${r.date}T${r.time}:00`).toISOString();
+        out.push({
+          iso,
+          date: r.date,
+          time: r.time,
+          therapy_type: tType,
+          duration_min: Number(r.duration || duration) || 60,
+          staff_id: r.staffId,
+          notes: notes || ''
+        });
+      }
+      setPlanPreview(out);
+      return;
+    }
+
+    // Simple mode: repeat same therapy by interval
+    if (!therapyType || !count || !startDate || !time) {
+      return window.showNotification?.({ type: 'error', title: 'Missing details', message: 'Select therapy, count, start date and time.' });
     }
     if (!staffId) {
       return window.showNotification?.({ type: 'error', title: 'Therapist required', message: 'Please assign a therapist.' });
+    }
+    const selectedType = therapyType === 'other'
+      ? (therapyOther || '').toLowerCase().trim().replace(/\s+/g, '_')
+      : therapyType;
+    if (!selectedType) {
+      return window.showNotification?.({ type: 'error', title: 'Therapy required', message: 'Please select a therapy or enter one under Other.' });
     }
     const n = Math.max(1, Number(count) || 1);
     const gap = Math.max(1, Number(intervalDays) || 1);
@@ -215,7 +286,7 @@ function TherapyScheduling({ currentUser }) {
         iso: new Date(d).toISOString(),
         date: d.toISOString().slice(0,10),
         time: time,
-        therapy_type: therapyType,
+        therapy_type: selectedType,
         duration_min: Number(duration) || 60,
         staff_id: staffId,
         notes: notes || ''
@@ -495,7 +566,28 @@ function TherapyScheduling({ currentUser }) {
             </div>
             <div>
               <label className="block text-xs text-gray-600 mb-1">Therapy</label>
-              <input type="text" value={planForm.therapyType} onChange={(e)=>setPlanForm(f=>({ ...f, therapyType: e.target.value.toLowerCase().replace(/\s+/g,'_') }))} className="w-full px-3 py-2 border rounded-lg" placeholder="e.g. abhyanga" />
+              <select
+                value={planForm.therapyType}
+                onChange={(e)=>setPlanForm(f=>({ ...f, therapyType: e.target.value, therapyOther: '' }))}
+                className="w-full px-3 py-2 border rounded-lg"
+              >
+                <option value="">Select therapy</option>
+                <option value="nasya">Nasya</option>
+                <option value="raktmokshana">Raktmokshana</option>
+                <option value="vaman">Vaman</option>
+                <option value="virechana">Virechana</option>
+                <option value="basti">Basti</option>
+                <option value="other">Other</option>
+              </select>
+              {planForm.therapyType === 'other' && (
+                <input
+                  type="text"
+                  value={planForm.therapyOther}
+                  onChange={(e)=>setPlanForm(f=>({ ...f, therapyOther: e.target.value }))}
+                  className="mt-2 w-full px-3 py-2 border rounded-lg"
+                  placeholder="Type therapy name"
+                />
+              )}
             </div>
             <div>
               <label className="block text-xs text-gray-600 mb-1">Sessions</label>
@@ -529,10 +621,80 @@ function TherapyScheduling({ currentUser }) {
               <input type="text" value={planForm.notes} onChange={(e)=>setPlanForm(f=>({ ...f, notes: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" placeholder="Optional notes" />
             </div>
             <div className="md:col-span-6 flex gap-2 justify-end">
-              <button type="button" onClick={handleGeneratePreview} disabled={!planForm.staffId || therapists.length === 0} className="px-4 py-2 rounded-lg border disabled:opacity-50">Preview</button>
-              <button type="button" onClick={handleCreateSessions} disabled={schedulingBusy || !planPreview.length || !planForm.staffId} className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 text-white disabled:opacity-50">{schedulingBusy ? 'Scheduling...' : 'Create Sessions'}</button>
+              <button type="button" onClick={handleGeneratePreview} disabled={advanced ? (rows.length === 0) : (!planForm.staffId || therapists.length === 0)} className="px-4 py-2 rounded-lg border disabled:opacity-50">Preview</button>
+              <button type="button" onClick={handleCreateSessions} disabled={schedulingBusy || !planPreview.length || (!advanced && (!planForm.staffId || (planForm.therapyType === 'other' && !planForm.therapyOther.trim())))} className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 text-white disabled:opacity-50">{schedulingBusy ? 'Scheduling...' : 'Create Sessions'}</button>
             </div>
           </div>
+
+          {/* Advanced mode toggle */}
+          <div className="mt-2 mb-2 flex items-center gap-3">
+            <label className="text-xs text-gray-600">Advanced (per-session plan)</label>
+            <input type="checkbox" checked={advanced} onChange={(e)=>setAdvanced(e.target.checked)} />
+            {advanced && (
+              <button type="button" onClick={addRow} className="ml-auto px-3 py-1.5 rounded-md border">Add Row</button>
+            )}
+          </div>
+
+          {advanced && (
+            <div className="overflow-auto border rounded-xl">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Therapy</th>
+                    <th className="px-3 py-2 text-left">Other</th>
+                    <th className="px-3 py-2 text-left">Date</th>
+                    <th className="px-3 py-2 text-left">Time</th>
+                    <th className="px-3 py-2 text-left">Duration</th>
+                    <th className="px-3 py-2 text-left">Therapist</th>
+                    <th className="px-3 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r, idx) => (
+                    <tr key={idx} className="border-t">
+                      <td className="px-3 py-2">
+                        <select value={r.therapyType} onChange={(e)=>updateRow(idx,'therapyType', e.target.value)} className="w-full px-2 py-1 border rounded-md">
+                          <option value="">Select</option>
+                          <option value="nasya">Nasya</option>
+                          <option value="raktmokshana">Raktmokshana</option>
+                          <option value="vaman">Vaman</option>
+                          <option value="virechana">Virechana</option>
+                          <option value="basti">Basti</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </td>
+                      <td className="px-3 py-2">
+                        <input type="text" value={r.therapyOther || ''} onChange={(e)=>updateRow(idx,'therapyOther', e.target.value)} placeholder="if Other" className="w-full px-2 py-1 border rounded-md" />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input type="date" value={r.date || ''} onChange={(e)=>updateRow(idx,'date', e.target.value)} className="w-full px-2 py-1 border rounded-md" />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input type="time" value={r.time || ''} onChange={(e)=>updateRow(idx,'time', e.target.value)} className="w-full px-2 py-1 border rounded-md" />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input type="number" min="10" step="5" value={r.duration || 60} onChange={(e)=>updateRow(idx,'duration', e.target.value)} className="w-full px-2 py-1 border rounded-md" />
+                      </td>
+                      <td className="px-3 py-2">
+                        <select value={r.staffId || ''} onChange={(e)=>updateRow(idx,'staffId', e.target.value)} className="w-full px-2 py-1 border rounded-md">
+                          <option value="">Select therapist</option>
+                          {therapists.map(s => (<option key={s.id} value={s.id}>{s.full_name || s.name}</option>))}
+                        </select>
+                      </td>
+                      <td className="px-3 py-2">
+                        <button type="button" onClick={()=>removeRow(idx)} className="px-2 py-1 text-red-600 border rounded-md">Remove</button>
+                      </td>
+                    </tr>
+                  ))}
+                  {rows.length === 0 && (
+                    <tr>
+                      <td colSpan="7" className="px-3 py-3 text-center text-gray-500">No rows. Click Add Row to start.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {planPreview.length > 0 && (
             <div className="mt-4 border-t pt-4">

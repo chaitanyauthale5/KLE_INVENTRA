@@ -28,6 +28,7 @@ const clinicAdminNavItems = [
   { title: "Clinic Dashboard", url: "Dashboard", icon: Home },
   { title: "Patients", url: "Patients", icon: Users },
   { title: "Doctors & Staff", url: "Staff", icon: UserCheck },
+  { title: "Clinic Inventory", url: "ClinicInventory", icon: Building },
   { title: "Scheduled Therapies", url: "TherapyScheduling", icon: Calendar },
   { title: "Reports", url: "Reports", icon: FileText },
   { title: "Notifications", url: "Notifications", icon: Bell }, 
@@ -55,6 +56,7 @@ const officeExecutiveNavItems = [
   { title: "Patient Management", url: "Patients", icon: Users },
   { title: "Appointments", url: "OfficeAppointments", icon: Calendar },
   { title: "Therapy Scheduling", url: "TherapyScheduling", icon: Calendar },
+  { title: "Clinic Inventory", url: "ClinicInventory", icon: Building },
 ];
 
 const navMap = {
