@@ -204,6 +204,8 @@ export const Patient = {
         assigned_doctor: body.assigned_doctor || body.assignedDoctor || '',
         progress_score: typeof body.progress_score === 'number' ? body.progress_score : (Number(body.progressScore) || 0),
         guardian_ids: Array.isArray(body.guardian_ids) ? body.guardian_ids : (body.guardianId ? [body.guardianId] : []),
+        // Extended structured intake
+        ...(body.intake ? { intake: body.intake } : {}),
       },
       // Any additional UI-only fields will be ignored by backend schema
     };
@@ -232,6 +234,7 @@ export const Patient = {
         assigned_doctor: body.assigned_doctor || body.assignedDoctor || '',
         progress_score: typeof body.progress_score === 'number' ? body.progress_score : (Number(body.progressScore) || 0),
         guardian_ids: Array.isArray(body.guardian_ids) ? body.guardian_ids : (body.guardianId ? [body.guardianId] : []),
+        ...(body.intake ? { intake: body.intake } : {}),
       },
     };
     const data = await api(`/api/patients/${id}`, { method: 'PUT', body: payload });
