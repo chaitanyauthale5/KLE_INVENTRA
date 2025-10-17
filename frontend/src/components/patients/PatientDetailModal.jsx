@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { X, Download, FileText, Calendar, Heart, Activity, User, Phone, Mail, MapPin } from 'lucide-react';
 import { format } from 'date-fns';
@@ -7,6 +6,7 @@ import { Patient } from '@/services';
 import { TherapySession } from '@/services';
 import { Feedback } from '@/services';
 import { Appointments } from '@/services';
+import { createPortal } from 'react-dom';
 
 const generatePDFReport = (patient, sessions, feedback) => {
   // Create a comprehensive HTML structure for PDF generation
@@ -364,6 +364,86 @@ export default function PatientDetailModal({ isOpen, onClose, patientId }) {
   const [isLoading, setIsLoading] = useState(false);
   const [booking, setBooking] = useState({ date: '', time: '', duration: 30, notes: '' });
   const [bookingBusy, setBookingBusy] = useState(false);
+  const dialogRef = useRef(null);
+  const scrollYRef = useRef(0);
+
+  // Lock body scroll (iOS-safe) and enable ESC-to-close
+  useEffect(() => {
+    if (!isOpen) return;
+    // Save scroll position and freeze body
+    scrollYRef.current = window.scrollY || window.pageYOffset;
+    const prev = {
+      body: {
+        position: document.body.style.position,
+        top: document.body.style.top,
+        left: document.body.style.left,
+        right: document.body.style.right,
+        width: document.body.style.width,
+        overflow: document.body.style.overflow,
+      },
+      html: {
+        overflow: document.documentElement.style.overflow,
+        overscrollBehavior: document.documentElement.style.overscrollBehavior,
+      }
+    };
+    document.documentElement.style.overflow = 'hidden';
+    document.documentElement.style.overscrollBehavior = 'none';
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollYRef.current}px`;
+    document.body.style.left = '0';
+    document.body.style.right = '0';
+    document.body.style.width = '100%';
+    document.body.style.overflow = 'hidden';
+
+    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
+    window.addEventListener('keydown', onKey);
+
+    return () => {
+      // Restore body scroll
+      document.body.style.position = prev.body.position;
+      document.body.style.top = prev.body.top;
+      document.body.style.left = prev.body.left;
+      document.body.style.right = prev.body.right;
+      document.body.style.width = prev.body.width;
+      document.body.style.overflow = prev.body.overflow;
+      document.documentElement.style.overflow = prev.html.overflow;
+      document.documentElement.style.overscrollBehavior = prev.html.overscrollBehavior;
+      window.scrollTo(0, scrollYRef.current || 0);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [isOpen, onClose]);
+
+  // Focus heading on open for accessibility
+  useEffect(() => {
+    if (isOpen && dialogRef.current) {
+      try { dialogRef.current.focus(); } catch {}
+    }
+  }, [isOpen]);
+
+  // Focus trap inside dialog
+  useEffect(() => {
+    if (!isOpen || !dialogRef.current) return;
+    const root = dialogRef.current;
+    const getFocusable = () => Array.from(root.querySelectorAll(
+      'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
+    )).filter(el => !el.hasAttribute('disabled') && !el.getAttribute('aria-hidden'));
+    const handler = (e) => {
+      if (e.key !== 'Tab') return;
+      const items = getFocusable();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        last.focus();
+        e.preventDefault();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        first.focus();
+        e.preventDefault();
+      }
+    };
+    root.addEventListener('keydown', handler);
+    return () => root.removeEventListener('keydown', handler);
+  }, [isOpen]);
 
   const loadPatientDetails = useCallback(async () => {
     if (!patientId) return;
@@ -438,22 +518,40 @@ export default function PatientDetailModal({ isOpen, onClose, patientId }) {
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-2 md:p-4">
+  return createPortal(
+    <div
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-0 sm:p-2 md:p-4 overscroll-none touch-none"
+      onClick={onClose}
+      onTouchMove={(e) => { /* prevent background scroll on iOS */ if (e.target === e.currentTarget) e.preventDefault(); }}
+      aria-hidden="true"
+    >
       <motion.div
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.8 }}
-        className="bg-white rounded-3xl shadow-2xl w-full md:w-[92vw] lg:w-[88vw] xl:w-[82vw] max-w-6xl max-h-[92vh] flex flex-col overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="patient-dialog-title"
+        tabIndex={-1}
+        ref={dialogRef}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-none sm:rounded-3xl shadow-2xl w-screen h-screen sm:w-full sm:h-auto md:w-[92vw] lg:w-[88vw] xl:w-[82vw] max-w-6xl max-h-[90dvh] flex flex-col overflow-hidden"
+        style={{ height: '100dvh' }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 md:p-6 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-green-50 sticky top-0 z-10">
+        {/* Header (draggable on touch devices to close) */}
+        <motion.div
+          className="flex items-center justify-between p-4 md:p-6 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-green-50 sticky top-0 z-10 touch-pan-y cursor-default sm:cursor-auto"
+          drag="y"
+          dragConstraints={{ top: 0, bottom: 120 }}
+          dragElastic={0.2}
+          onDragEnd={(e, info) => { if (info && info.offset && info.offset.y > 80) { onClose?.(); } }}
+        >
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-green-500 rounded-2xl flex items-center justify-center">
               <FileText className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-gray-800">Patient Detail Report</h2>
+              <h2 id="patient-dialog-title" className="text-2xl font-bold text-gray-800">Patient Detail Report</h2>
               <p className="text-gray-500">Comprehensive Panchakarma treatment overview</p>
             </div>
           </div>
@@ -466,14 +564,14 @@ export default function PatientDetailModal({ isOpen, onClose, patientId }) {
               <Download className="w-4 h-4" />
               Download PDF Report
             </button>
-            <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 transition-colors">
+            <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 transition-colors" aria-label="Close">
               <X className="w-6 h-6 text-gray-600" />
             </button>
           </div>
-        </div>
+        </motion.div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        <div className="flex-1 overflow-y-auto overscroll-contain p-4 md:p-6 pb-24" style={{ paddingTop: 'max(env(safe-area-inset-top), 0rem)', paddingBottom: 'max(env(safe-area-inset-bottom), 1.5rem)' }}>
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
               <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600"></div>
@@ -642,6 +740,7 @@ export default function PatientDetailModal({ isOpen, onClose, patientId }) {
           )}
         </div>
       </motion.div>
-    </div>
+    </div>,
+    document.body
   );
 }
