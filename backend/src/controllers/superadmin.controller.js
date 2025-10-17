@@ -4,166 +4,21 @@ import { User } from '../models/User.js';
 import { FinanceTransaction } from '../models/FinanceTransaction.js';
 import { PatientFeedback } from '../models/PatientFeedback.js';
 import bcrypt from 'bcryptjs';
-<<<<<<< HEAD
-import { User as UserModel } from '../models/User.js';
-import { TherapySession } from '../models/TherapySession.js';
-=======
-import { sendMail } from '../utils/mailer.js';
->>>>>>> 4fd5df5b46c9883ddf4e4a199f6ea0c7a1aa238b
 
 const toObjectId = (id) => {
   try { return new mongoose.Types.ObjectId(String(id)); } catch { return null; }
 };
 
-// Global analytics across all clinics for Super Admin dashboard
-export const getGlobalAnalytics = async (req, res) => {
-  try {
-    const now = new Date();
-    const gran = (String(req.query.granularity || 'month').toLowerCase()); // 'day' | 'week' | 'month'
-    const windowN = Math.max(1, Math.min(365, parseInt(req.query.window || (gran === 'day' ? '7' : gran === 'week' ? '12' : '12'), 10)));
-
-    const to = req.query.to ? new Date(req.query.to) : now;
-    let from; let fmt;
-    if (gran === 'day') { from = new Date(to.getTime() - (windowN - 1) * 24*60*60*1000); fmt = '%Y-%m-%d'; }
-    else if (gran === 'week') { from = new Date(to.getTime() - (windowN - 1) * 7*24*60*60*1000); fmt = '%G-%V'; }
-    else { // month
-      from = new Date(to.getFullYear(), to.getMonth() - (windowN - 1), 1);
-      fmt = '%Y-%m';
-    }
-
-    const mode = String(req.query.mode || 'live'); // 'live' | 'demo'
-    const isDemoMode = mode === 'demo';
-
-    // Scope by role and mode: prefer explicit hospitalId, else user's clinic; in live mode exclude demo data
-    const scope = (coll) => {
-      const qHospital = req.query.hospitalId;
-      if (qHospital) {
-        const val = toObjectId(qHospital) || qHospital;
-        const base = { $or: [ { hospital_id: val }, { hospitalId: val } ] };
-        if (!isDemoMode) base.demo = { $ne: true };
-        return base;
-      }
-      if (req?.user?.role && req?.user?.hospital_id) {
-        const val = toObjectId(req.user.hospital_id) || req.user.hospital_id;
-        const base = { $or: [ { hospital_id: val }, { hospitalId: val } ] };
-        if (!isDemoMode) base.demo = { $ne: true };
-        return base;
-      }
-      const base = {};
-      if (!isDemoMode) base.demo = { $ne: true };
-      return base;
-    };
-
-    // Monthly patients (users with role patient)
-    let patientsSeries;
-    if (gran === 'week') {
-      patientsSeries = await UserModel.aggregate([
-        { $match: { ...scope('users'), ...(isDemoMode?{}:{ email: { $not: /demo\.patient\./ } }), createdAt: { $gte: from, $lte: to }, $expr: { $eq: [ { $toLower: '$role' }, 'patient' ] } } },
-        { $group: { _id: { year: { $isoWeekYear: '$createdAt' }, week: { $isoWeek: '$createdAt' } }, count: { $sum: 1 } } },
-        { $project: { _id: { $concat: [ { $toString: '$_id.year' }, '-', { $toString: '$_id.week' } ] }, count: 1 } },
-        { $sort: { _id: 1 } }
-      ]);
-    } else {
-      patientsSeries = await UserModel.aggregate([
-        { $match: { ...scope('users'), ...(isDemoMode?{}:{ email: { $not: /demo\.patient\./ } }), createdAt: { $gte: from, $lte: to }, $expr: { $eq: [ { $toLower: '$role' }, 'patient' ] } } },
-        { $group: { _id: { $dateToString: { format: fmt, date: '$createdAt' } }, count: { $sum: 1 } } },
-        { $sort: { _id: 1 } }
-      ]);
-    }
-
-    // Completed sessions total and by therapy type distribution (last 90 days window for relevance)
-    const lastWindow = from; // use same window for distributions
-    const [completedSessions, totalSessionsWindow, therapyDist, activeStaff] = await Promise.all([
-      TherapySession.countDocuments({ status: 'completed', ...scope('sessions'), createdAt: { $gte: lastWindow, $lte: to } }),
-      TherapySession.countDocuments({ ...scope('sessions'), createdAt: { $gte: lastWindow, $lte: to } }),
-      TherapySession.aggregate([
-        { $match: { ...scope('sessions'), createdAt: { $gte: lastWindow, $lte: to } } },
-        { $group: { _id: { $ifNull: ['$therapy_type', 'Other'] }, count: { $sum: 1 } } },
-        { $sort: { count: -1 } }
-      ]),
-      UserModel.countDocuments({ ...scope('users'), role: { $in: ['doctor','office_executive','clinic_admin','hospital_admin','admin'] } })
-    ]);
-
-    // Finance category weightage across all clinics for selected window
-    const financeAggCat = await FinanceTransaction.aggregate([
-      { $match: { ...scope('finance'), created_at: { $gte: lastWindow, $lte: to } } },
-      { $group: { _id: { $ifNull: ['$category','other'] }, total: { $sum: '$amount' }, count: { $sum: 1 } } },
-      { $sort: { total: -1 } }
-    ]);
-
-    // Revenue trend (income grouped by selected granularity)
-    let revenueTrend;
-    if (gran === 'week') {
-      revenueTrend = await FinanceTransaction.aggregate([
-        { $match: { ...scope('finance'), created_at: { $gte: from, $lte: to }, type: 'income' } },
-        { $group: { _id: { year: { $isoWeekYear: '$created_at' }, week: { $isoWeek: '$created_at' } }, total: { $sum: '$amount' } } },
-        { $project: { _id: { $concat: [ { $toString: '$_id.year' }, '-', { $toString: '$_id.week' } ] }, total: 1 } },
-        { $sort: { _id: 1 } }
-      ]);
-    } else {
-      revenueTrend = await FinanceTransaction.aggregate([
-        { $match: { ...scope('finance'), created_at: { $gte: from, $lte: to }, type: 'income' } },
-        { $group: { _id: { $dateToString: { format: fmt, date: '$created_at' } }, total: { $sum: '$amount' } } },
-        { $sort: { _id: 1 } }
-      ]);
-    }
-
-    // Totals
-    const [totalPatients, totalStaff] = await Promise.all([
-      UserModel.countDocuments({ ...scope('users'), ...(isDemoMode?{}:{ email: { $not: /demo\.patient\./ } }), $expr: { $eq: [ { $toLower: '$role' }, 'patient' ] } }),
-      UserModel.countDocuments({ ...scope('users'), $expr: { $in: [ { $toLower: '$role' }, ['doctor','office_executive','clinic_admin','hospital_admin','admin'] ] } })
-    ]);
-
-    return res.json({
-      kpis: {
-        totalPatients,
-        completedSessions,
-        activeStaff: totalStaff,
-        averageProgressPct: totalSessionsWindow > 0 ? Math.round((completedSessions / totalSessionsWindow) * 100) : 0,
-      },
-      granularity: gran,
-      window: windowN,
-      series: patientsSeries, // [{ _id: key, count }]
-      therapyDistribution: therapyDist.map(d => ({ label: d._id, value: d.count })),
-      financeCategoryWeightage: financeAggCat.map(d => ({ label: d._id, value: d.total, count: d.count })),
-      revenueTrend,
-      generatedAt: new Date().toISOString(),
-    });
-  } catch (e) {
-    console.error('getGlobalAnalytics error:', e);
-    return res.status(500).json({ message: 'Server error' });
-  }
-};
-
 // Seed demo data for charts (DEV utility)
 export const seedDemoData = async (req, res) => {
   try {
-    // Seeding enabled for authorized roles via route guard
-
-    const { months = 12, patientsPerClinic = 250, feedbackPerClinic = 120 } = req.body || {};
-    let hospitals = await Hospital.find({}).lean();
-    if (!hospitals.length) {
-      const demo = await Hospital.create({ name: 'Demo Clinic', city: 'Demo City', state: 'Demo State', address: '123 Demo Street' });
-      hospitals = [demo.toObject()];
-      // Create a clinic admin and staff for the demo clinic (idempotent)
-      const salt = await bcrypt.genSalt(10);
-      const passwordHash = await bcrypt.hash('demo1234', salt);
-      await User.updateOne(
-        { email: 'clinicadmin@demo.local' },
-        { $set: { name: 'Demo Clinic Admin', role: 'clinic_admin', hospital_id: demo._id, passwordHash } },
-        { upsert: true }
-      );
-      await User.updateOne(
-        { email: 'doctor@demo.local' },
-        { $set: { name: 'Dr. Demo', role: 'doctor', hospital_id: demo._id, passwordHash } },
-        { upsert: true }
-      );
-      await User.updateOne(
-        { email: 'exec@demo.local' },
-        { $set: { name: 'Executive Demo', role: 'office_executive', hospital_id: demo._id, passwordHash } },
-        { upsert: true }
-      );
+    // Optional safeguard for production
+    if (process.env.NODE_ENV === 'production' && req.query.allow !== 'true') {
+      return res.status(403).json({ message: 'Seeding disabled in production' });
     }
+
+    const { months = 12, patientsPerClinic = 40, feedbackPerClinic = 60 } = req.body || {};
+    const hospitals = await Hospital.find({}).lean();
     const now = new Date();
 
     for (const h of hospitals) {
@@ -174,67 +29,68 @@ export const seedDemoData = async (req, res) => {
       const toCreate = Math.max(0, patientsPerClinic - existingPatients);
       const patients = [];
       for (let i = 0; i < toCreate; i++) {
-        const idx = existingPatients + i + 1;
-        const email = `demo.patient.${hid}.${idx}@demo.local`;
         patients.push({
-          name: `Demo Patient ${idx}`,
+          name: `Demo Patient ${i + 1} (${h.name})`,
+          email: undefined,
+          username: undefined,
+          passwordHash: 'demo',
           role: 'patient',
           hospital_id: hid,
-          email,
-          passwordHash: await bcrypt.hash('demo1234', 10),
-          createdAt: new Date(now.getTime() - Math.floor(Math.random()*180)*24*60*60*1000),
-          demo: true
+          createdAt: new Date(now.getTime() - Math.floor(Math.random() * 90) * 86400000),
+          updatedAt: new Date(),
         });
       }
-      if (patients.length) await User.insertMany(patients, { ordered: false }).catch(()=>{});
+      if (patients.length) {
+        await User.insertMany(patients);
+      }
 
-      // 2) Generate therapy sessions over last 180 days (dense)
-      const types = ['Panchakarma','Shirodhara','Abhyanga','Basti','Udwarthanam','Swedana','Other'];
-      const sessions = [];
-      for (let d = 0; d < 180; d++) {
-        const day = new Date(now.getTime() - d*24*60*60*1000);
-        const n = 6 + Math.floor(Math.random()*9); // 6-14 per day
-        for (let i = 0; i < n; i++) {
-          const type = types[Math.floor(Math.random()*types.length)];
-          const createdAt = new Date(day.getTime() + Math.floor(Math.random()*10)*60*60*1000);
-          const r = Math.random();
-          const status = r < 0.78 ? 'completed' : r < 0.92 ? 'scheduled' : 'cancelled';
-          const outcomes = status==='completed' ? { completed_at: new Date(createdAt.getTime() + (1+Math.floor(Math.random()*3))*60*60*1000) } : {};
-          sessions.push({ hospital_id: hid, therapy_type: type, status, createdAt, scheduled_at: createdAt, outcomes, demo: true });
+      // 2) Finance transactions for last N months (income/expense)
+      const financeDocs = [];
+      for (let m = months - 1; m >= 0; m--) {
+        const start = new Date(now.getFullYear(), now.getMonth() - m, 1);
+        const end = new Date(now.getFullYear(), now.getMonth() - m + 1, 0);
+        const monthlyIncome = 200000 + Math.floor(Math.random() * 200000); // 2-4L
+        const monthlyExpense = 80000 + Math.floor(Math.random() * 90000); // 0.8-1.7L
+
+        // split into ~12 entries per month
+        const splits = 12;
+        for (let s = 0; s < splits; s++) {
+          const day = new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));
+          financeDocs.push({
+            hospital_id: hid,
+            type: 'income',
+            amount: Math.round(monthlyIncome / splits + (Math.random() * 5000 - 2500)),
+            method: 'cash',
+            category: 'therapy',
+            created_at: day,
+          });
+          financeDocs.push({
+            hospital_id: hid,
+            type: 'expense',
+            amount: Math.round(monthlyExpense / splits + (Math.random() * 3000 - 1500)),
+            method: 'bank',
+            category: 'operations',
+            created_at: day,
+          });
         }
       }
-      if (sessions.length) await TherapySession.insertMany(sessions, { ordered: false }).catch(()=>{});
-
-      // 3) Finance transactions per month (rich categories)
-      const tx = [];
-      const cats = ['therapy','medicines','supplies','salary','rent','marketing'];
-      for (let m = 0; m < months; m++) {
-        const base = new Date(now.getFullYear(), now.getMonth()-m, 5);
-        const monthlyIncome = 140000 + Math.round(Math.random()*120000) + (months-m)*5000;
-        tx.push({ hospital_id: hid, type: 'income', category: 'therapy', amount: monthlyIncome, created_at: base, demo: true });
-        // spread expenses through the month
-        cats.filter(c=>c!=='therapy').forEach((c, idx) => {
-          const day = new Date(base.getFullYear(), base.getMonth(), 7 + idx*4);
-          const amt = 20000 + Math.round(Math.random()*50000);
-          tx.push({ hospital_id: hid, type: 'expense', category: c, amount: amt, created_at: day, demo: true });
-        });
+      if (financeDocs.length) {
+        await FinanceTransaction.insertMany(financeDocs);
       }
-      if (tx.length) await FinanceTransaction.insertMany(tx, { ordered: false }).catch(()=>{});
 
-      // 4) Patient feedbacks
-      const fbs = [];
+      // 3) Patient feedback random
+      const fbDocs = [];
       for (let i = 0; i < feedbackPerClinic; i++) {
         const created = new Date(now.getTime() - Math.floor(Math.random() * 60) * 86400000);
-        fbs.push({
+        fbDocs.push({
           hospital_id: hid,
           rating: Math.min(5, Math.max(1, Math.round(3 + (Math.random() * 2)))) ,
           comment: 'Demo feedback',
           created_at: created,
-          demo: true
         });
       }
-      if (fbs.length) {
-        await PatientFeedback.insertMany(fbs).catch(()=>{});
+      if (fbDocs.length) {
+        await PatientFeedback.insertMany(fbDocs);
       }
     }
 
@@ -454,41 +310,6 @@ export const createClinicAdmin = async (req, res) => {
       hospital_id: hid
     });
     await user.save();
-
-    // Send credentials email to clinic and/or admin
-    try {
-      const hospital = await Hospital.findById(hid).lean();
-      const loginBase = process.env.APP_URL || (process.env.FRONTEND_ORIGINS || process.env.FRONTEND_ORIGIN || '').split(',')[0] || 'http://localhost:5173';
-      const loginUrl = `${loginBase}`;
-      const recipients = [email, hospital?.email].filter(Boolean).join(', ');
-      if (recipients) {
-        const subject = `Clinic Admin Access for ${hospital?.name || 'your clinic'}`;
-        const userIdent = email || username;
-        const html = `
-          <div style="font-family:Arial,sans-serif;">
-            <h2>Welcome to AyurSutra</h2>
-            <p>Clinic <strong>${hospital?.name || ''}</strong> has been set up with an Admin account.</p>
-            <div style="margin:10px 0;padding:10px;border:1px solid #eee;border-radius:8px;background:#fafafa">
-              <p style="margin:0 0 6px 0"><strong>Clinic details</strong></p>
-              <p style="margin:0">Name: ${hospital?.name || ''}</p>
-              <p style="margin:0">Address: ${hospital?.address || ''}</p>
-              <p style="margin:0">City/State: ${hospital?.city || ''}${hospital?.state ? ', ' + hospital.state : ''}</p>
-              <p style="margin:0">Phone: ${hospital?.phone || ''}</p>
-              <p style="margin:0">Email: ${hospital?.email || ''}</p>
-            </div>
-            <p><strong>Admin Name:</strong> ${full_name}</p>
-            <p><strong>Login:</strong> ${userIdent}</p>
-            <p><strong>Temporary Password:</strong> ${password}</p>
-            <p>Sign in here: <a href="${loginUrl}" target="_blank" rel="noreferrer">${loginUrl}</a></p>
-            <p style="margin-top:10px;color:#555">For security, please sign in and change your password immediately.</p>
-          </div>
-        `;
-        const text = `Clinic Admin Access\nClinic: ${hospital?.name || ''}\nAddress: ${hospital?.address || ''}\nCity/State: ${hospital?.city || ''}${hospital?.state ? ', ' + hospital.state : ''}\nPhone: ${hospital?.phone || ''}\nEmail: ${hospital?.email || ''}\nAdmin: ${full_name}\nLogin: ${userIdent}\nTemporary Password: ${password}\nSign in: ${loginUrl}`;
-        await sendMail({ to: recipients, subject, text, html });
-      }
-    } catch (mailErr) {
-      console.warn('[SuperAdmin] Failed to send clinic admin credentials email:', mailErr?.message || mailErr);
-    }
     return res.status(201).json({ admin: user.toJSON() });
   } catch (e) {
     console.error('createClinicAdmin error:', e);
@@ -510,38 +331,6 @@ export const reassignClinicAdmin = async (req, res) => {
     await User.updateMany({ role: 'clinic_admin', hospital_id: hid }, { $set: { role: 'doctor' } });
     const newAdmin = await User.findByIdAndUpdate(uid, { role: 'clinic_admin', hospital_id: hid }, { new: true });
     if (!newAdmin) return res.status(404).json({ message: 'User not found' });
-
-    // Notify reassigned admin and clinic email
-    try {
-      const hospital = await Hospital.findById(hid).lean();
-      const loginBase = process.env.APP_URL || (process.env.FRONTEND_ORIGINS || process.env.FRONTEND_ORIGIN || '').split(',')[0] || 'http://localhost:5173';
-      const loginUrl = `${loginBase}`;
-      const recipients = [newAdmin.email, hospital?.email].filter(Boolean).join(', ');
-      if (recipients) {
-        const subject = `You are now Clinic Admin for ${hospital?.name || 'your clinic'}`;
-        const html = `
-          <div style="font-family:Arial,sans-serif;">
-            <h2>Admin Role Assigned</h2>
-            <p>Hello ${newAdmin.name || 'User'}, you have been assigned as <strong>Clinic Admin</strong> for <strong>${hospital?.name || ''}</strong>.</p>
-            <div style="margin:10px 0;padding:10px;border:1px solid #eee;border-radius:8px;background:#fafafa">
-              <p style="margin:0 0 6px 0"><strong>Clinic details</strong></p>
-              <p style="margin:0">Name: ${hospital?.name || ''}</p>
-              <p style="margin:0">Address: ${hospital?.address || ''}</p>
-              <p style="margin:0">City/State: ${hospital?.city || ''}${hospital?.state ? ', ' + hospital.state : ''}</p>
-              <p style="margin:0">Phone: ${hospital?.phone || ''}</p>
-              <p style="margin:0">Email: ${hospital?.email || ''}</p>
-            </div>
-            <p>Please sign in using your existing account credentials.</p>
-            <p>Sign in: <a href="${loginUrl}" target="_blank" rel="noreferrer">${loginUrl}</a></p>
-            <p style="margin-top:10px;color:#555">If you forgot your password, please contact support to reset it.</p>
-          </div>
-        `;
-        const text = `You are now Clinic Admin for ${hospital?.name || ''}.\nAddress: ${hospital?.address || ''}\nCity/State: ${hospital?.city || ''}${hospital?.state ? ', ' + hospital.state : ''}\nPhone: ${hospital?.phone || ''}\nEmail: ${hospital?.email || ''}\nSign in: ${loginUrl}`;
-        await sendMail({ to: recipients, subject, text, html });
-      }
-    } catch (mailErr) {
-      console.warn('[SuperAdmin] Failed to send reassignment email:', mailErr?.message || mailErr);
-    }
 
     return res.json({ admin: newAdmin.toJSON() });
   } catch (e) {

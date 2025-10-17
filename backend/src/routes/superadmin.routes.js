@@ -8,29 +8,23 @@ import {
   listDoctorsByClinic,
   listFeedbacksByClinic,
   getClinicProgress,
-  seedDemoData,
-  getGlobalAnalytics
+  seedDemoData
 } from '../controllers/superadmin.controller.js';
 
 const router = Router();
 
-// Require auth for all routes under /superadmin
-router.use(requireAuth);
+router.use(requireAuth, authorize('super_admin'));
 
-// super_admin-only routes
-router.get('/clinics', authorize('super_admin'), listClinics);
-router.get('/clinics/:hospitalId/finances', authorize('super_admin'), getClinicFinances);
-router.get('/clinics/:hospitalId/doctors', authorize('super_admin'), listDoctorsByClinic);
-router.get('/clinics/:hospitalId/feedbacks', authorize('super_admin'), listFeedbacksByClinic);
-router.get('/clinics/:hospitalId/progress', authorize('super_admin'), getClinicProgress);
-
-// analytics routes available to broader admin roles
-router.get('/analytics/global', authorize('super_admin','clinic_admin','hospital_admin','admin'), getGlobalAnalytics);
+router.get('/clinics', listClinics);
+router.get('/clinics/:hospitalId/finances', getClinicFinances);
+router.get('/clinics/:hospitalId/doctors', listDoctorsByClinic);
+router.get('/clinics/:hospitalId/feedbacks', listFeedbacksByClinic);
+router.get('/clinics/:hospitalId/progress', getClinicProgress);
 
 // DEV utility: seed demo data for charts
-router.post('/seed', authorize('super_admin','clinic_admin','hospital_admin','admin'), seedDemoData);
+router.post('/seed', seedDemoData);
 
-router.post('/clinics/:hospitalId/admin', authorize('super_admin'), createClinicAdmin);
-router.put('/clinics/:hospitalId/admin', authorize('super_admin'), reassignClinicAdmin);
+router.post('/clinics/:hospitalId/admin', createClinicAdmin);
+router.put('/clinics/:hospitalId/admin', reassignClinicAdmin);
 
 export default router;
