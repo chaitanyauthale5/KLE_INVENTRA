@@ -547,9 +547,7 @@ export default function NotificationsPage() {
                   </span>
                 </div>
                 <p className="text-gray-600 mt-1">{n.message}</p>
-                {(n.hospital_id || n.clinic_id) && (
-                  <div className="text-xs text-gray-400 mt-1">Clinic: {String(n.hospital_id || n.clinic_id)}</div>
-                )}
+                {/* Clinic identifier intentionally hidden in UI */}
               </div>
               {activeTab === 'incoming' && me?.role !== 'super_admin' && !n.is_read && (
                 <button

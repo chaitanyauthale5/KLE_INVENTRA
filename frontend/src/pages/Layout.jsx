@@ -57,6 +57,7 @@ const officeExecutiveNavItems = [
   { title: "Patient Management", url: "Patients", icon: Users },
   { title: "Appointments", url: "OfficeAppointments", icon: Calendar },
   { title: "Therapy Scheduling", url: "TherapyScheduling", icon: Calendar },
+  { title: "Notifications", url: "Notifications", icon: Bell },
 ];
 
 const navMap = {
