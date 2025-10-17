@@ -133,6 +133,15 @@ export default function AddStaffModal({ isOpen, onClose, onStaffAdded, currentUs
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Full Name *</label>
+              <input
+                name="fullName"
+                type="text"
+                value={formData.fullName}
+                onChange={handleChange}
+                placeholder="e.g., Dr. Suyog Kulkarni"
+                required
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500"
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Role *</label>

@@ -3,6 +3,7 @@ import { withUser } from '../middleware/hospitalScope.js';
 import { Appointment } from '../models/Appointment.js';
 import { User } from '../models/User.js';
 import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 
 export const listPatients = async (req, res) => {
   try {
@@ -104,6 +105,42 @@ export const createPatient = async (req, res) => {
         return res.status(400).json({ message: 'Invalid doctor_id' });
       }
     }
+    // If email + password are given, create or link a User account for patient portal
+    if (body.email && body.password) {
+      const email = String(body.email).toLowerCase();
+      let user = await User.findOne({ email });
+      const name = body.full_name || body.name || 'Patient';
+      if (!user) {
+        const salt = await bcrypt.genSalt(10);
+        const passwordHash = await bcrypt.hash(String(body.password), salt);
+        user = await User.create({
+          name,
+          email,
+          phone: body.phone || undefined,
+          role: 'patient',
+          hospital_id: body.hospital_id,
+          has_selected_role: true,
+          passwordHash,
+        });
+      } else {
+        // Ensure role and hospital scope are aligned
+        if (!user.role || user.role === 'guardian') user.role = 'patient';
+        if (!user.hospital_id) user.hospital_id = body.hospital_id;
+        await user.save().catch(() => {});
+      }
+      body.user_id = user._id;
+    }
+
+    // Link to clinic admin and creator (office executive/clinic admin/doctor) in metadata for traceability
+    body.metadata = body.metadata || {};
+    try {
+      body.metadata.created_by_user_id = req.userId;
+      if (body.hospital_id) {
+        const clinicAdmin = await User.findOne({ hospital_id: body.hospital_id, role: 'clinic_admin' }).lean();
+        if (clinicAdmin?._id) body.metadata.clinic_admin_id = clinicAdmin._id;
+      }
+    } catch {}
+
     const created = await Patient.create(body);
     res.status(201).json({ patient: created });
   } catch (e) {
