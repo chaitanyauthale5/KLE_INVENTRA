@@ -20,10 +20,8 @@ const superAdminNavItems = [
   { title: "Clinics", url: "SuperClinics", icon: Building },
   { title: "Finances", url: "SuperFinances", icon: BarChart3 },
   { title: "Reports & Analysis", url: "Reports", icon: FileText },
-  //{ title: "All Patients", url: "Patients", icon: Users },
-  { title: "Staff", url: "Staff", icon: UserCheck },
   { title: "Notifications", url: "Notifications", icon: Bell },
-  { title: "Settings", url: "Settings", icon: Settings },
+ 
 ];
 
 const clinicAdminNavItems = [
