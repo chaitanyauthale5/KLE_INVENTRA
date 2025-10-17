@@ -254,12 +254,45 @@ export const Patient = {
 export const TherapySession = {
   async list() {
     const data = await api('/api/sessions');
-    return (data?.sessions || []).map(normalizeId);
+    return (data?.sessions || []).map(normalizeId).map((s) => {
+      const at = s.scheduled_at || s.scheduledAt;
+      if (at && (!s.scheduled_date || !s.scheduled_time)) {
+        const d = new Date(at);
+        const to2 = (n) => String(n).padStart(2, '0');
+        const localDate = `${d.getFullYear()}-${to2(d.getMonth()+1)}-${to2(d.getDate())}`;
+        const localTime = `${to2(d.getHours())}:${to2(d.getMinutes())}`;
+        return { ...s, scheduled_date: s.scheduled_date || localDate, scheduled_time: s.scheduled_time || localTime };
+      }
+      return s;
+    });
   },
   async filter(query = {}) {
     const qs = new URLSearchParams(query).toString();
     const data = await api(`/api/sessions${qs ? `?${qs}` : ''}`);
-    return (data?.sessions || []).map(normalizeId);
+    return (data?.sessions || []).map(normalizeId).map((s) => {
+      const at = s.scheduled_at || s.scheduledAt;
+      if (at && (!s.scheduled_date || !s.scheduled_time)) {
+        const d = new Date(at);
+        const to2 = (n) => String(n).padStart(2, '0');
+        const localDate = `${d.getFullYear()}-${to2(d.getMonth()+1)}-${to2(d.getDate())}`;
+        const localTime = `${to2(d.getHours())}:${to2(d.getMinutes())}`;
+        return { ...s, scheduled_date: s.scheduled_date || localDate, scheduled_time: s.scheduled_time || localTime };
+      }
+      return s;
+    });
+  },
+  async create(body) {
+    // Accepts: { hospital_id, patient_id, doctor_id, therapy_type, scheduled_at | (scheduled_date, scheduled_time), duration_min, notes }
+    const data = await api('/api/sessions', { method: 'POST', body });
+    return normalizeId(data?.session || data);
+  },
+  async update(id, body) {
+    const data = await api(`/api/sessions/${id}`, { method: 'PUT', body });
+    return normalizeId(data?.session || data);
+  },
+  async delete(id) {
+    await api(`/api/sessions/${id}`, { method: 'DELETE' });
+    return true;
   },
 };
 
@@ -319,7 +352,51 @@ export const Prescription = {
 };
 
 // Stubs kept for compile-time imports that may exist elsewhere
-export const Feedback = { list: async () => [], filter: async () => [], create: async () => ({}), update: async () => ({}), delete: async () => ({}) };
+function mapFeedbackForUI(f) {
+  const id = f?.id || f?._id;
+  const patientObj = f?.patient_id && typeof f.patient_id === 'object' ? f.patient_id : null;
+  const patient_id = patientObj ? (patientObj._id || patientObj.id) : (f?.patient_user_id ?? f?.patient_id ?? f?.patientId);
+  return normalizeId({
+    ...f,
+    id,
+    message: f?.message ?? f?.comment ?? '',
+    patient_user_id: patient_id,
+    patient_name: f?.patient_name ?? patientObj?.name ?? f?.patient?.name,
+    hospital_id: f?.hospital_id ?? f?.hospitalId,
+    admin_response: f?.admin_response ?? '',
+    admin_responded_at: f?.admin_responded_at ?? f?.adminRespondedAt,
+    created_date: f?.createdAt || f?.created_date,
+    updated_date: f?.updatedAt || f?.updated_date,
+  });
+}
+
+export const Feedback = {
+  async list() {
+    const data = await api('/api/feedbacks');
+    return (data?.feedbacks || data?.items || []).map(mapFeedbackForUI);
+  },
+  async filter(query = {}, sort, limit) {
+    const params = new URLSearchParams({ ...(query || {}) });
+    if (sort) params.set('sort', sort);
+    if (limit) params.set('limit', String(limit));
+    const qs = params.toString();
+    const data = await api(`/api/feedbacks${qs ? `?${qs}` : ''}`);
+    return (data?.feedbacks || data?.items || []).map(mapFeedbackForUI);
+  },
+  async create(payload) {
+    const data = await api('/api/feedbacks', { method: 'POST', body: payload });
+    return mapFeedbackForUI(data?.feedback || data);
+  },
+  async update(id, body) {
+    const data = await api(`/api/feedbacks/${id}`, { method: 'PUT', body });
+    return mapFeedbackForUI(data?.feedback || data);
+  },
+  async delete(id) {
+    await api(`/api/feedbacks/${id}`, { method: 'DELETE' });
+    return true;
+  },
+};
+
 export const Notification = {
   async list() {
     const data = await api('/api/notifications');

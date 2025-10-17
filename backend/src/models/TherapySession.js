@@ -5,6 +5,9 @@ const therapySessionSchema = new mongoose.Schema(
     hospital_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Hospital', index: true },
     patient_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', index: true },
     doctor_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    // core details
+    therapy_type: { type: String, trim: true },
+    assigned_staff_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     // therapist_id removed - therapists no longer exist
     status: { type: String, enum: ['scheduled','completed','cancelled'], default: 'scheduled', index: true },
     scheduled_at: { type: Date, required: true, index: true },

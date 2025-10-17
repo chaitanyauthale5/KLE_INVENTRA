@@ -11,7 +11,7 @@ import NotificationSystem from "../components/shared/NotificationSystem";
 // import RoleSelectionModal from "../components/auth/RoleSelectionModal";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Home, Users, Calendar, Bell, BarChart3, FileText, Settings, LogOut, Menu, X, Stethoscope, UserCheck, Activity, ChevronDown, Building
+  Home, Users, Calendar, Bell, BarChart3, FileText, Settings, LogOut, Menu, X, Stethoscope, UserCheck, Activity, ChevronDown, Building, Star
 } from "lucide-react";
 const SUPER_ADMIN_EMAIL = 'op940356622@gmail.com';
 // --- Role-Specific Navigation Menus ---
@@ -31,6 +31,7 @@ const clinicAdminNavItems = [
   { title: "Scheduled Therapies", url: "TherapyScheduling", icon: Calendar },
   { title: "Reports", url: "Reports", icon: FileText },
   { title: "Notifications", url: "Notifications", icon: Bell }, 
+  { title: "Patient Feedback", url: "ClinicFeedbacks", icon: Star },
 ];
 
 const doctorNavItems = [
@@ -48,16 +49,14 @@ const patientNavItems = [
   { title: "My Schedule", url: "PatientSchedule", icon: Calendar },
   { title: "Prescriptions", url: "PrescriptionRecords", icon: FileText },
   { title: "Analytics & Report", url: "PatientAnalytics", icon: BarChart3 },
+  { title: "Feedback", url: "PatientFeedback", icon: Star },
 ];
 
 const officeExecutiveNavItems = [
   { title: "Office Executive Dashboard", url: "OfficeExecutiveDashboard", icon: Home },
-  { title: "Patient Registration", url: "Patients", icon: Users },
+  { title: "Patient Management", url: "Patients", icon: Users },
   { title: "Appointments", url: "OfficeAppointments", icon: Calendar },
   { title: "Therapy Scheduling", url: "TherapyScheduling", icon: Calendar },
-  { title: "Prescription & Records", url: "PrescriptionRecords", icon: FileText },
-  { title: "Notifications", url: "Notifications", icon: Bell },
- // { title: "Settings", url: "Settings", icon: Settings },
 ];
 
 const navMap = {
