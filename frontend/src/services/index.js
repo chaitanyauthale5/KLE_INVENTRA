@@ -491,6 +491,15 @@ export const SuperAdmin = {
     const data = await api(`/api/superadmin/clinics${qs ? `?${qs}` : ''}`);
     return data;
   },
+  async analyticsGlobal(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    const data = await api(`/api/superadmin/analytics/global${qs ? `?${qs}` : ''}`);
+    return data;
+  },
+  async seed() {
+    const data = await api(`/api/superadmin/seed`, { method: 'POST' });
+    return data;
+  },
   async getClinicFinances(hospitalId, params = {}) {
     const qs = new URLSearchParams(params).toString();
     const data = await api(`/api/superadmin/clinics/${hospitalId}/finances${qs ? `?${qs}` : ''}`);
