@@ -778,7 +778,6 @@ export default function LandingPageComponent({ onLogin, onNavigateToApp }) {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               <FeatureCard icon={Calendar} title="AI-Powered Scheduling" description="Intelligent therapy scheduling that eliminates conflicts and optimizes resource utilization with machine learning algorithms." />
               <FeatureCard icon={MessageSquare} title="AI Medical Chatbot" description="24/7 intelligent consultation assistant powered by medical AI to provide instant patient support and preliminary assessments." delay={0.1} />
-              <FeatureCard icon={Shield} title="Smart Guardian Tracking" description="Real-time family involvement with automated updates, progress dashboards, and intelligent notification systems." delay={0.2} />
               <FeatureCard icon={Bell} title="Multi-Channel Notifications" description="Automated pre/post-therapy alerts via SMS, Email, and In-App with personalized timing and content." delay={0.3} />
               <FeatureCard icon={BarChart3} title="Advanced Analytics" description="Visualize patient progress, center efficiency, and therapy effectiveness with our comprehensive analytics suite." delay={0.4} />
               <FeatureCard icon={Heart} title="Integrated Health Records" description="Secure, comprehensive digital health records accessible to patients, doctors, and guardians with role-based permissions." delay={0.5} />

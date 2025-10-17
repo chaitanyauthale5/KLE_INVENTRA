@@ -7,7 +7,6 @@ import {
   HeartPulse,
   MessageSquare,
   Play,
-  Shield,
   Star,
   Stethoscope
 } from 'lucide-react';
@@ -267,12 +266,6 @@ export default function LandingPage({ onLogin }) {
               title="AI Medical Chatbot" 
               description="24/7 intelligent consultation assistant powered by medical AI to provide instant patient support and preliminary assessments."
               delay={0.2}
-            />
-            <FeatureCard 
-              icon={Shield} 
-              title="Smart Guardian Tracking" 
-              description="Real-time family involvement with automated updates, progress dashboards, and intelligent notification systems."
-              delay={0.4}
             />
             <FeatureCard 
               icon={Bell} 
