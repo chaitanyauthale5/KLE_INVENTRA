@@ -3,6 +3,7 @@ import { User } from '../models/User.js';
 import { Patient } from '../models/Patient.js';
 import { FinanceTransaction } from '../models/FinanceTransaction.js';
 import { TherapySession } from '../models/TherapySession.js';
+import { Appointment } from '../models/Appointment.js';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
@@ -104,7 +105,7 @@ export const getHospitalSummary = async (req, res) => {
       ? new mongoose.Types.ObjectId(hospitalId)
       : hospitalId;
 
-    const [patientsCount, patientUsersCount, doctorsCount, execsCount, financeAgg, financeAggMTD, patientsMTD, patientUsersMTD, apptTotal, completedMTD, visitsToday] = await Promise.all([
+    const [patientsCount, patientUsersCount, doctorsCount, execsCount, financeAgg, financeAggMTD, patientsMTD, patientUsersMTD, apptTotal, completedMTD, visitsToday, patientsToday, apptsToday] = await Promise.all([
       // Patients may have hospital_id saved as ObjectId or string
       Patient.countDocuments({ $or: [ { hospital_id: hid }, { hospital_id: String(hid) } ] }),
       // Users collection: handle both ObjectId and string hospital_id
@@ -125,6 +126,9 @@ export const getHospitalSummary = async (req, res) => {
       TherapySession.countDocuments({ $or: [ { hospital_id: hid }, { hospital_id: String(hid) } ] }),
       TherapySession.countDocuments({ $or: [ { hospital_id: hid }, { hospital_id: String(hid) } ], status: 'completed', 'outcomes.completed_at': { $gte: firstOfMonth } }),
       TherapySession.countDocuments({ $or: [ { hospital_id: hid }, { hospital_id: String(hid) } ], scheduled_at: { $gte: startOfToday, $lte: endOfToday }, status: { $ne: 'cancelled' } }),
+      // New today counts
+      Patient.countDocuments({ $or: [ { hospital_id: hid }, { hospital_id: String(hid) } ], createdAt: { $gte: startOfToday, $lte: endOfToday } }),
+      Appointment.countDocuments({ hospital_id: hid, start_time: { $gte: startOfToday, $lte: endOfToday }, status: { $ne: 'cancelled' } }).catch(() => 0),
     ]);
 
     const income = financeAgg.find(f => f._id === 'income')?.total || 0;
@@ -149,7 +153,9 @@ export const getHospitalSummary = async (req, res) => {
       patients_mtd: patientsMTDFinal,
       appointments_total: apptTotal,
       sessions_completed_mtd: completedMTD,
-      visits_today: visitsToday
+      visits_today: visitsToday,
+      patients_today: patientsToday || 0,
+      appointments_today: apptsToday || 0
     });
   } catch (e) {
     console.error('getHospitalSummary error:', e);
