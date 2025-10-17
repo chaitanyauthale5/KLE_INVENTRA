@@ -16,6 +16,7 @@ import feedbackRoutes from './routes/feedbacks.routes.js';
 import superAdminRoutes from './routes/superadmin.routes.js';
 import prescriptionRoutes from './routes/prescriptions.routes.js';
 import rescheduleRoutes from './routes/rescheduleRequests.routes.js';
+import { startScheduler } from './workers/scheduler.js';
 
 // Load env before reading process.env in this module
 dotenv.config();
@@ -90,6 +91,17 @@ app.use('/api/reschedule-requests', rescheduleRoutes);
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
+
+// Start background scheduler unless explicitly disabled
+try {
+  if (process.env.SCHEDULER_DISABLED !== '1') {
+    startScheduler();
+  } else {
+    console.log('[Scheduler] disabled by env SCHEDULER_DISABLED=1');
+  }
+} catch (e) {
+  console.warn('[Scheduler] failed to start:', e?.message || e);
+}
 
 // 404 handler
 app.use((req, res) => {

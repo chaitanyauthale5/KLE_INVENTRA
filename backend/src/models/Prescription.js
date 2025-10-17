@@ -11,6 +11,15 @@ const therapySchema = new mongoose.Schema({
   name: { type: String, trim: true },
   duration: { type: String, trim: true },
   frequency: { type: String, trim: true },
+  type: { type: String, trim: true },
+  plan_sessions: { type: Number, default: 0 },
+  plan_interval_days: { type: Number, default: 1 },
+  plan_start_date: { type: Date },
+  plan_duration_min: { type: Number },
+  plan_preferred_time: { type: String, trim: true },
+  plan_preferred_days: { type: [String], default: [] },
+  plan_assigned_staff_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  plan_notes: { type: String, trim: true },
 }, { _id: false });
 
 const prescriptionSchema = new mongoose.Schema({
