@@ -254,12 +254,45 @@ export const Patient = {
 export const TherapySession = {
   async list() {
     const data = await api('/api/sessions');
-    return (data?.sessions || []).map(normalizeId);
+    return (data?.sessions || []).map(normalizeId).map((s) => {
+      const at = s.scheduled_at || s.scheduledAt;
+      if (at && (!s.scheduled_date || !s.scheduled_time)) {
+        const d = new Date(at);
+        const to2 = (n) => String(n).padStart(2, '0');
+        const localDate = `${d.getFullYear()}-${to2(d.getMonth()+1)}-${to2(d.getDate())}`;
+        const localTime = `${to2(d.getHours())}:${to2(d.getMinutes())}`;
+        return { ...s, scheduled_date: s.scheduled_date || localDate, scheduled_time: s.scheduled_time || localTime };
+      }
+      return s;
+    });
   },
   async filter(query = {}) {
     const qs = new URLSearchParams(query).toString();
     const data = await api(`/api/sessions${qs ? `?${qs}` : ''}`);
-    return (data?.sessions || []).map(normalizeId);
+    return (data?.sessions || []).map(normalizeId).map((s) => {
+      const at = s.scheduled_at || s.scheduledAt;
+      if (at && (!s.scheduled_date || !s.scheduled_time)) {
+        const d = new Date(at);
+        const to2 = (n) => String(n).padStart(2, '0');
+        const localDate = `${d.getFullYear()}-${to2(d.getMonth()+1)}-${to2(d.getDate())}`;
+        const localTime = `${to2(d.getHours())}:${to2(d.getMinutes())}`;
+        return { ...s, scheduled_date: s.scheduled_date || localDate, scheduled_time: s.scheduled_time || localTime };
+      }
+      return s;
+    });
+  },
+  async create(body) {
+    // Accepts: { hospital_id, patient_id, doctor_id, therapy_type, scheduled_at | (scheduled_date, scheduled_time), duration_min, notes }
+    const data = await api('/api/sessions', { method: 'POST', body });
+    return normalizeId(data?.session || data);
+  },
+  async update(id, body) {
+    const data = await api(`/api/sessions/${id}`, { method: 'PUT', body });
+    return normalizeId(data?.session || data);
+  },
+  async delete(id) {
+    await api(`/api/sessions/${id}`, { method: 'DELETE' });
+    return true;
   },
 };
 
@@ -363,7 +396,45 @@ export const Feedback = {
     return true;
   },
 };
-export const Notification = { list: async () => [], filter: async () => [], create: async () => ({}), update: async () => ({}), delete: async () => ({}) };
+
+export const Notification = {
+  async list() {
+    const data = await api('/api/notifications');
+    return (data?.notifications || []).map(normalizeId).map(n => ({
+      ...n,
+      created_date: n.createdAt || n.created_date,
+      is_read: typeof n.read === 'boolean' ? n.read : n.is_read,
+    }));
+  },
+  async listOutgoing() {
+    const data = await api('/api/notifications?sent_by_me=1');
+    return (data?.notifications || []).map(normalizeId).map(n => ({
+      ...n,
+      created_date: n.createdAt || n.created_date,
+      is_read: typeof n.read === 'boolean' ? n.read : n.is_read,
+    }));
+  },
+  async filter(_query = {}, _sort = '-created_date', _limit = 200) {
+    // If filtering for items sent by current user, use backend sent_by_me flag
+    const wantsOutgoing = _query && (Object.prototype.hasOwnProperty.call(_query, 'sender_id') || _query.sent_by_me);
+    const arr = wantsOutgoing ? await this.listOutgoing() : await this.list();
+    return Array.isArray(arr) ? arr.slice(0, _limit) : [];
+  },
+  async create(payload) {
+    // Only admins/super_admins allowed by backend
+    const data = await api('/api/notifications', { method: 'POST', body: payload });
+    return normalizeId(data?.notification || data);
+  },
+  async update(id, body) {
+    if (body && (body.is_read === true || body.read === true)) {
+      const data = await api(`/api/notifications/${id}/read`, { method: 'PATCH' });
+      return normalizeId(data?.notification || data);
+    }
+    // No generic update route; return noop
+    return {};
+  },
+  async markRead(id) { return this.update(id, { is_read: true }); },
+};
 export const ConsultationLog = { list: async () => [], filter: async () => [], create: async () => ({}), update: async () => ({}), delete: async () => ({}) };
 
 // Super Admin API client

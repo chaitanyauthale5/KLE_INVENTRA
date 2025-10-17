@@ -54,11 +54,9 @@ const patientNavItems = [
 
 const officeExecutiveNavItems = [
   { title: "Office Executive Dashboard", url: "OfficeExecutiveDashboard", icon: Home },
-  { title: "Patient Registration", url: "Patients", icon: Users },
+  { title: "Patient Management", url: "Patients", icon: Users },
   { title: "Appointments", url: "OfficeAppointments", icon: Calendar },
   { title: "Therapy Scheduling", url: "TherapyScheduling", icon: Calendar },
-  { title: "Prescription & Records", url: "PrescriptionRecords", icon: FileText },
-  { title: "Settings", url: "Settings", icon: Settings },
 ];
 
 const navMap = {
@@ -122,14 +120,14 @@ const AppShell = ({ currentUser, handleLogout, children, navigateToLanding }) =>
     };
   }, [isProfileMenuOpen, isMobileMenuOpen, isNotifOpen]);
 
-  // Load notifications for patient role
+  // Load incoming notifications for current user (all roles)
   useEffect(() => {
     if (!currentUser?.id) return;
     let active = true;
     const load = async () => {
       try {
         setNotifLoading(true);
-        const inc = await Notification.filter({ recipient_id: currentUser.id }, "-created_date", 20).catch(() => []);
+        const inc = await Notification.list().catch(() => []);
         if (!active) return;
         setNotifications(Array.isArray(inc) ? inc : []);
         setUnreadCount((Array.isArray(inc) ? inc : []).filter(n => !n.is_read).length);
@@ -355,9 +353,8 @@ const AppShell = ({ currentUser, handleLogout, children, navigateToLanding }) =>
 
             {/* Profile Menu, Patient Notifications & Mobile Menu Trigger */}
             <div className="flex items-center gap-2">
-              {/* Patient notifications bell */}
-              {currentUser?.role === 'patient' && (
-                <div className="relative notifications-dropdown-container">
+              {/* Notifications bell (incoming only) - shown for all roles */}
+              <div className="relative notifications-dropdown-container">
                   <button
                     onClick={(e) => { e.stopPropagation(); setIsNotifOpen(!isNotifOpen); }}
                     className="p-2 md:p-3 bg-white/15 rounded-2xl text-white hover:bg-white/25 transition-colors relative border border-white/20 shadow-lg"
@@ -417,7 +414,6 @@ const AppShell = ({ currentUser, handleLogout, children, navigateToLanding }) =>
                     )}
                   </AnimatePresence>
                 </div>
-              )}
               <div className="relative profile-dropdown-container">
                 <button
                   onClick={(e) => {

@@ -4,7 +4,7 @@ import { TherapySession } from "@/services";
 import { Patient } from "@/services";
 import { User } from "@/services";
 import { Hospital } from "@/services";
-import { Appointments } from "@/services";
+ 
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Calendar as CalendarIcon,
@@ -29,18 +29,20 @@ function TherapyScheduling({ currentUser }) {
   const [patients, setPatients] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState("");
-  const [doctors, setDoctors] = useState([]);
-  const [bookingBusy, setBookingBusy] = useState(false);
-  const [form, setForm] = useState({ patientId: '', doctorId: '', date: '', time: '', duration: 30, notes: '' });
-  const [showAddPatient, setShowAddPatient] = useState(false);
-  const [newPatient, setNewPatient] = useState({ full_name: '', phone: '', gender: '', address: '' });
-  const [creatingPatient, setCreatingPatient] = useState(false);
+  const [staffList, setStaffList] = useState([]);
+  const [self, setSelf] = useState(currentUser);
+  
+  const [planForm, setPlanForm] = useState({ patientId: '', therapyType: '', count: 5, startDate: '', time: '10:00', intervalDays: 1, duration: 60, staffId: '', notes: '' });
+  const [planPreview, setPlanPreview] = useState([]);
+  const [schedulingBusy, setSchedulingBusy] = useState(false);
+
   // view-only: no calendar view
   // View-only: no scheduling/editing state
 
   const loadData = useCallback(async () => {
     // Resolve user from props or fallback to API to ensure rendering
     const user = currentUser || await User.me().catch(() => null);
+    setSelf(user);
     if (!user) {
       setIsLoading(false);
       setStatusMessage('No authenticated user found.');
@@ -143,15 +145,31 @@ function TherapyScheduling({ currentUser }) {
         console.log("Guardian filtered sessions:", finalSessions);
       }
 
+      // Normalize sessions to ensure scheduled_date/time are present for UI
+      const mapSession = (s) => {
+        const at = s.scheduled_at || s.scheduledAt;
+        if (at && (!s.scheduled_date || !s.scheduled_time)) {
+          const d = new Date(at);
+          return {
+            ...s,
+            scheduled_date: s.scheduled_date || format(d, 'yyyy-MM-dd'),
+            scheduled_time: s.scheduled_time || format(d, 'HH:mm'),
+          };
+        }
+        return s;
+      };
+
+      const normalized = finalSessions.map(mapSession);
+
       console.log("Final scheduling data:", {
-        sessions: finalSessions.length,
+        sessions: normalized.length,
         patients: patientsData.length,
-        sampleSessions: finalSessions.slice(0, 3)
+        sampleSessions: normalized.slice(0, 3)
       });
 
-      setSessions(finalSessions);
+      setSessions(normalized);
       setPatients(patientsData);
-      setStatusMessage(finalSessions.length ? '' : 'No sessions found for your account.');
+      setStatusMessage(normalized.length ? '' : 'No sessions found for your account.');
     } catch (error) {
       console.error("Error loading scheduling data:", error);
       setSessions([]);
@@ -166,69 +184,76 @@ function TherapyScheduling({ currentUser }) {
     loadData();
   }, [currentUser, loadData]);
 
-  // Load doctors list for office_executive/clinic_admin booking
+  // Load staff list for therapist assignment
   useEffect(() => {
     (async () => {
-      const me = currentUser || await User.me().catch(() => null);
-      if (!me?.hospital_id) { setDoctors([]); return; }
+      const me = self || await User.me().catch(() => null);
+      if (!me?.hospital_id) { setStaffList([]); return; }
       try {
         const staff = await Hospital.listStaff(me.hospital_id);
-        setDoctors((staff || []).filter(u => u.role === 'doctor'));
-      } catch { setDoctors([]); }
+        setStaffList(staff || []);
+      } catch { setStaffList([]); }
     })();
-  }, [currentUser]);
+  }, [self]);
 
-  const canBook = (currentUser?.role === 'clinic_admin');
+  const canSchedule = (self?.role === 'clinic_admin' || self?.role === 'office_executive' || self?.role === 'super_admin');
 
-  const handleBook = async (e) => {
-    e?.preventDefault?.();
-    const me = currentUser || await User.me().catch(() => null);
-    if (!me?.hospital_id) return window.showNotification?.({ type: 'error', title: 'Clinic missing', message: 'Your account is not linked to a clinic.' });
-    if (!form.patientId || !form.doctorId || !form.date || !form.time) return window.showNotification?.({ type: 'error', title: 'Missing details', message: 'Select patient, doctor, date and time.' });
-    try {
-      setBookingBusy(true);
-      const start = new Date(`${form.date}T${form.time}:00`);
-      const end = new Date(start.getTime() + (Number(form.duration) || 30) * 60000);
-      await Appointments.book({
-        hospital_id: me.hospital_id,
-        staff_id: form.doctorId,
-        type: 'doctor',
-        start_time: start.toISOString(),
-        end_time: end.toISOString(),
-        notes: form.notes || `Booked by ${me.full_name || 'staff'}`,
+  const handleGeneratePreview = () => {
+    const { patientId, therapyType, count, startDate, time, intervalDays, duration, staffId, notes } = planForm;
+    if (!patientId || !therapyType || !count || !startDate || !time) {
+      return window.showNotification?.({ type: 'error', title: 'Missing details', message: 'Select patient, therapy, start date and time, count.' });
+    }
+    if (!staffId) {
+      return window.showNotification?.({ type: 'error', title: 'Therapist required', message: 'Please assign a therapist.' });
+    }
+    const n = Math.max(1, Number(count) || 1);
+    const gap = Math.max(1, Number(intervalDays) || 1);
+    const out = [];
+    let d = new Date(`${startDate}T${time}:00`);
+    for (let i = 0; i < n; i++) {
+      out.push({
+        iso: new Date(d).toISOString(),
+        date: d.toISOString().slice(0,10),
+        time: time,
+        therapy_type: therapyType,
+        duration_min: Number(duration) || 60,
+        staff_id: staffId,
+        notes: notes || ''
       });
-      window.showNotification?.({ type: 'success', title: 'Appointment booked', message: 'The appointment has been created.' });
-      setForm({ patientId: '', doctorId: '', date: '', time: '', duration: 30, notes: '' });
-      loadData();
-    } catch (err) {
-      window.showNotification?.({ type: 'error', title: 'Booking failed', message: err?.message || 'Unable to create appointment' });
-    } finally { setBookingBusy(false); }
+      d = new Date(d.getTime() + gap * 24 * 3600 * 1000);
+    }
+    setPlanPreview(out);
   };
 
-  const handleCreatePatient = async (e) => {
-    e?.preventDefault?.();
-    if (!newPatient.full_name) return window.showNotification?.({ type: 'error', title: 'Name required', message: 'Please enter patient name.' });
+  const handleCreateSessions = async () => {
+    if (!planPreview.length) return window.showNotification?.({ type: 'error', title: 'No preview', message: 'Generate a preview first.' });
+    const me = currentUser || await User.me().catch(() => null);
+    if (!me?.hospital_id) return window.showNotification?.({ type: 'error', title: 'Clinic missing', message: 'Your account is not linked to a clinic.' });
+    const patientId = planForm.patientId;
+    const patient = patients.find(p => p.id === patientId);
+    const doctorId = patient?.assigned_doctor_id || null;
     try {
-      setCreatingPatient(true);
-      const payload = {
-        full_name: newPatient.full_name,
-        phone: newPatient.phone,
-        gender: newPatient.gender,
-        address: newPatient.address,
-        ...(form.doctorId ? { doctor_id: form.doctorId } : {}),
-      };
-      const created = await Patient.create(payload);
-      window.showNotification?.({ type: 'success', title: 'Patient added', message: `Created ${created.full_name}` });
-      // refresh patients list and preselect
-      const me = currentUser || await User.me().catch(() => null);
-      const refreshed = await Patient.filter(me?.hospital_id ? { hospital_id: me.hospital_id } : {});
-      setPatients(refreshed);
-      setForm(f => ({ ...f, patientId: created.id }));
-      setShowAddPatient(false);
-      setNewPatient({ full_name: '', phone: '', gender: '', address: '' });
+      setSchedulingBusy(true);
+      for (const s of planPreview) {
+        const payload = {
+          hospital_id: me.hospital_id,
+          patient_id: patientId,
+          ...(doctorId ? { doctor_id: doctorId } : {}),
+          therapy_type: s.therapy_type,
+          scheduled_at: s.iso,
+          duration_min: s.duration_min,
+          ...(s.staff_id ? { assigned_staff_id: s.staff_id } : {}),
+          notes: s.staff_id ? `${s.notes ? s.notes + ' | ' : ''}Assigned Therapist: ${s.staff_id}` : s.notes
+        };
+        await TherapySession.create(payload);
+      }
+      window.showNotification?.({ type: 'success', title: 'Sessions created', message: `${planPreview.length} sessions scheduled.` });
+      setPlanPreview([]);
+      setPlanForm(f => ({ ...f, notes: '' }));
+      loadData();
     } catch (err) {
-      window.showNotification?.({ type: 'error', title: 'Create failed', message: err?.message || 'Unable to create patient' });
-    } finally { setCreatingPatient(false); }
+      window.showNotification?.({ type: 'error', title: 'Create failed', message: err?.message || 'Unable to create sessions.' });
+    } finally { setSchedulingBusy(false); }
   };
 
   // Group sessions by scheduled_date for compact list
@@ -268,6 +293,8 @@ function TherapyScheduling({ currentUser }) {
     const patient = patients.find(p => p.id === patientId);
     return patient?.full_name || `Patient ${patientId}`;
   };
+
+  const therapists = staffList.filter(s => s.role === 'therapist' || String(s.department || '').toLowerCase().includes('therap'));
 
   const therapyVisuals = {
     'vamana': { 
@@ -453,81 +480,74 @@ function TherapyScheduling({ currentUser }) {
         <div />
       </div>
 
-      {/* Booking (Office Executive/Clinic Admin) */}
-      {canBook && (
+      
+
+      {canSchedule && (
         <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-3 md:p-6 shadow-xl border border-white/50">
-          <h2 className="text-base md:text-lg font-semibold text-gray-800 mb-3">Book Appointment</h2>
-          {/* Quick Add Patient */}
-          <div className="mb-3">
-            <button type="button" onClick={()=>setShowAddPatient(v=>!v)} className="text-sm px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200">
-              {showAddPatient ? 'Close Add Patient' : 'Add New Patient'}
-            </button>
-          </div>
-          {showAddPatient && (
-            <form onSubmit={handleCreatePatient} className="grid grid-cols-1 md:grid-cols-6 gap-3 mb-4 p-3 border rounded-xl bg-gray-50">
-              <div className="md:col-span-2">
-                <label className="block text-xs text-gray-600 mb-1">Full Name</label>
-                <input type="text" value={newPatient.full_name} onChange={(e)=>setNewPatient(p=>({ ...p, full_name: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" required />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">Phone</label>
-                <input type="tel" value={newPatient.phone} onChange={(e)=>setNewPatient(p=>({ ...p, phone: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">Gender</label>
-                <select value={newPatient.gender} onChange={(e)=>setNewPatient(p=>({ ...p, gender: e.target.value }))} className="w-full px-3 py-2 border rounded-lg">
-                  <option value="">Select</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-xs text-gray-600 mb-1">Address</label>
-                <input type="text" value={newPatient.address} onChange={(e)=>setNewPatient(p=>({ ...p, address: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
-              </div>
-              <div className="md:col-span-6 flex justify-end">
-                <button type="submit" disabled={creatingPatient} className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 text-white disabled:opacity-50">
-                  {creatingPatient ? 'Creating...' : 'Create Patient'}
-                </button>
-              </div>
-            </form>
-          )}
-          <form onSubmit={handleBook} className="grid grid-cols-1 md:grid-cols-6 gap-3">
+          <h2 className="text-base md:text-lg font-semibold text-gray-800 mb-3">Schedule Therapies (from doctor plan)</h2>
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
             <div className="md:col-span-2">
               <label className="block text-xs text-gray-600 mb-1">Patient</label>
-              <select value={form.patientId} onChange={(e)=>setForm(f=>({ ...f, patientId: e.target.value }))} className="w-full px-3 py-2 border rounded-lg">
+              <select value={planForm.patientId} onChange={(e)=>setPlanForm(f=>({ ...f, patientId: e.target.value }))} className="w-full px-3 py-2 border rounded-lg">
                 <option value="">Select patient</option>
                 {patients.map(p => (<option key={p.id} value={p.id}>{p.full_name || p.name}</option>))}
               </select>
             </div>
-            <div className="md:col-span-2">
-              <label className="block text-xs text-gray-600 mb-1">Doctor</label>
-              <select value={form.doctorId} onChange={(e)=>setForm(f=>({ ...f, doctorId: e.target.value }))} className="w-full px-3 py-2 border rounded-lg">
-                <option value="">Select doctor</option>
-                {doctors.map(d => (<option key={d.id} value={d.id}>{d.full_name || d.name}</option>))}
-              </select>
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">Therapy</label>
+              <input type="text" value={planForm.therapyType} onChange={(e)=>setPlanForm(f=>({ ...f, therapyType: e.target.value.toLowerCase().replace(/\s+/g,'_') }))} className="w-full px-3 py-2 border rounded-lg" placeholder="e.g. abhyanga" />
             </div>
             <div>
-              <label className="block text-xs text-gray-600 mb-1">Date</label>
-              <input type="date" value={form.date} onChange={(e)=>setForm(f=>({ ...f, date: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
+              <label className="block text-xs text-gray-600 mb-1">Sessions</label>
+              <input type="number" min="1" value={planForm.count} onChange={(e)=>setPlanForm(f=>({ ...f, count: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">Start Date</label>
+              <input type="date" value={planForm.startDate} onChange={(e)=>setPlanForm(f=>({ ...f, startDate: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
             </div>
             <div>
               <label className="block text-xs text-gray-600 mb-1">Time</label>
-              <input type="time" value={form.time} onChange={(e)=>setForm(f=>({ ...f, time: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
+              <input type="time" value={planForm.time} onChange={(e)=>setPlanForm(f=>({ ...f, time: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">Interval (days)</label>
+              <input type="number" min="1" value={planForm.intervalDays} onChange={(e)=>setPlanForm(f=>({ ...f, intervalDays: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
             </div>
             <div>
               <label className="block text-xs text-gray-600 mb-1">Duration (min)</label>
-              <input type="number" min="10" step="5" value={form.duration} onChange={(e)=>setForm(f=>({ ...f, duration: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
+              <input type="number" min="10" step="5" value={planForm.duration} onChange={(e)=>setPlanForm(f=>({ ...f, duration: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
             </div>
-            <div className="md:col-span-6">
+            <div className="md:col-span-2">
+              <label className="block text-xs text-gray-600 mb-1">Assign Therapist</label>
+              <select required value={planForm.staffId} onChange={(e)=>setPlanForm(f=>({ ...f, staffId: e.target.value }))} className="w-full px-3 py-2 border rounded-lg">
+                <option value="">Select therapist</option>
+                {therapists.map(s => (<option key={s.id} value={s.id}>{s.full_name || s.name}</option>))}
+              </select>
+            </div>
+            <div className="md:col-span-3">
               <label className="block text-xs text-gray-600 mb-1">Notes</label>
-              <input type="text" value={form.notes} onChange={(e)=>setForm(f=>({ ...f, notes: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" placeholder="Optional notes" />
+              <input type="text" value={planForm.notes} onChange={(e)=>setPlanForm(f=>({ ...f, notes: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" placeholder="Optional notes" />
             </div>
-            <div className="md:col-span-6 flex justify-end">
-              <button type="submit" disabled={bookingBusy} className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-green-600 text-white disabled:opacity-50">{bookingBusy ? 'Booking...' : 'Book Appointment'}</button>
+            <div className="md:col-span-6 flex gap-2 justify-end">
+              <button type="button" onClick={handleGeneratePreview} disabled={!planForm.staffId || therapists.length === 0} className="px-4 py-2 rounded-lg border disabled:opacity-50">Preview</button>
+              <button type="button" onClick={handleCreateSessions} disabled={schedulingBusy || !planPreview.length || !planForm.staffId} className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 text-white disabled:opacity-50">{schedulingBusy ? 'Scheduling...' : 'Create Sessions'}</button>
             </div>
-          </form>
+          </div>
+
+          {planPreview.length > 0 && (
+            <div className="mt-4 border-t pt-4">
+              <div className="text-sm text-gray-600 mb-2">Preview ({planPreview.length})</div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {planPreview.map((p, idx) => (
+                  <div key={idx} className="p-3 border rounded-lg">
+                    <div className="font-medium capitalize">{p.therapy_type.replace(/_/g,' ')}</div>
+                    <div className="text-sm text-gray-600">{new Date(p.iso).toLocaleString()}</div>
+                    <div className="text-xs text-gray-500">Duration: {p.duration_min} min</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
