@@ -153,17 +153,33 @@ export const updateSession = async (req, res) => {
       if (req.body?.approvals?.admin_approved !== undefined) {
         existing.approvals.admin_approved = !!req.body.approvals.admin_approved;
       }
-      if (req.body.scheduled_at) existing.scheduled_at = new Date(req.body.scheduled_at);
+      // We'll compute candidate schedule and validate capacity for target room
+      const candidateScheduledAt = req.body.scheduled_at ? new Date(req.body.scheduled_at) : existing.scheduled_at;
+      const candidateDuration = Math.max(10, Number(req.body.duration_min || existing.duration_min) || 60);
+      if (req.body.scheduled_at && isNaN(candidateScheduledAt.getTime())) {
+        return res.status(400).json({ message: 'scheduled_at invalid' });
+      }
       // therapist_id removed
       if (req.body.doctor_id) existing.doctor_id = req.body.doctor_id;
       if (req.body.assigned_staff_id) existing.assigned_staff_id = req.body.assigned_staff_id;
       if (req.body.therapy_type) existing.therapy_type = String(req.body.therapy_type).toLowerCase().trim().replace(/\s+/g, '_');
-      if (req.body.room_id) {
-        // Validate capacity similar to create
-        const duration = Math.max(10, Number(req.body.duration_min || existing.duration_min) || 60);
-        const start = new Date(existing.scheduled_at);
-        const end = new Date(start.getTime() + duration * 60000);
-        const r = await Room.findOne({ _id: req.body.room_id, hospital_id: existing.hospital_id, status: 'active' });
+      // Allow status update by office_executive/super_admin
+      if (typeof req.body.status === 'string') {
+        const allowed = ['scheduled','in_progress','completed','cancelled'];
+        if (allowed.includes(req.body.status)) {
+          existing.status = req.body.status;
+          if (existing.status === 'completed') {
+            existing.outcomes = existing.outcomes || {};
+            if (!existing.outcomes.completed_at) existing.outcomes.completed_at = new Date();
+          }
+        }
+      }
+      // Determine target room (new or existing) and validate capacity if we reschedule or change room
+      const targetRoomId = req.body.room_id || existing.room_id;
+      if (targetRoomId && (req.body.room_id || req.body.scheduled_at || req.body.duration_min)) {
+        const start = new Date(candidateScheduledAt);
+        const end = new Date(start.getTime() + candidateDuration * 60000);
+        const r = await Room.findOne({ _id: targetRoomId, hospital_id: existing.hospital_id, status: 'active' });
         if (!r) return res.status(404).json({ message: 'Room not found' });
         const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, '_');
         if (Array.isArray(r.therapy_types) && r.therapy_types.length) {
@@ -187,8 +203,10 @@ export const updateSession = async (req, res) => {
           return sStart < end && start < sEnd;
         }).length;
         if (overlaps >= capacity) return res.status(409).json({ message: 'Room full for the selected time' });
-        existing.room_id = req.body.room_id;
+        if (req.body.room_id) existing.room_id = req.body.room_id;
       }
+      if (req.body.scheduled_at) existing.scheduled_at = candidateScheduledAt;
+      if (req.body.duration_min) existing.duration_min = candidateDuration;
     }
     // Doctor can mark completed and add outcomes
     if (isDoctor(req.user)) {

@@ -19,7 +19,9 @@ import {
   Flame,
   Mountain,
   Heart,
-  
+  PlayCircle,
+  XCircle,
+  RotateCcw,
 } from "lucide-react";
 import { format } from "date-fns";
 import PropTypes from 'prop-types';
@@ -39,6 +41,11 @@ function TherapyScheduling({ currentUser }) {
   const [advanced, setAdvanced] = useState(false);
   const [rows, setRows] = useState([]);
   const [roomOptions, setRoomOptions] = useState({}); // key: therapy|date|time|duration -> [{id,name,available_spots}]
+  // Filters
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterTherapy, setFilterTherapy] = useState('');
+  const [filterDate, setFilterDate] = useState('all'); // all | today | week | upcoming
+  const [filterText, setFilterText] = useState('');
 
   // view-only: no calendar view
   // View-only: no scheduling/editing state
@@ -202,6 +209,63 @@ function TherapyScheduling({ currentUser }) {
 
   const canSchedule = (self?.role === 'office_executive' || self?.role === 'super_admin');
 
+  const statusStyles = {
+    scheduled: 'bg-gray-100 text-gray-700 border-gray-200',
+    in_progress: 'bg-sky-50 text-sky-700 border-sky-200',
+    completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    cancelled: 'bg-rose-50 text-rose-700 border-rose-200',
+  };
+
+  const [resched, setResched] = useState(null);
+  const openReschedule = (session) => {
+    setResched({ id: session.id, date: session.scheduled_date || '', time: session.scheduled_time || '', busy: false });
+  };
+  const cancelReschedule = () => setResched(null);
+  const saveReschedule = async (session) => {
+    if (!resched?.date || !resched?.time) {
+      return window.showNotification?.({ type: 'error', title: 'Missing', message: 'Pick date and time' });
+    }
+    const iso = new Date(`${resched.date}T${resched.time}:00`).toISOString();
+    const duration = session.duration_min || 60;
+    setResched(s => ({ ...s, busy: true }));
+    try {
+      await TherapySession.update(session.id, { scheduled_at: iso, duration_min: duration, ...(session.room_id ? { room_id: session.room_id } : {}) });
+      window.showNotification?.({ type: 'success', title: 'Rescheduled' });
+      setSessions(ss => ss.map(x => x.id === session.id ? { ...x, scheduled_date: resched.date, scheduled_time: resched.time } : x));
+      setResched(null);
+    } catch (e) {
+      if (e?.status === 409) {
+        try {
+          const avail = await Rooms.availability({ therapy_type: session.therapy_type, date: resched.date, time: resched.time, duration_min: duration });
+          const candidate = (avail || []).find(r => (r.available_spots || 0) > 0);
+          if (!candidate) throw new Error('No room available at the selected time');
+          await TherapySession.update(session.id, { scheduled_at: iso, duration_min: duration, room_id: candidate.id });
+          window.showNotification?.({ type: 'success', title: 'Rescheduled', message: `Room auto-assigned: ${candidate.name}` });
+          setSessions(ss => ss.map(x => x.id === session.id ? { ...x, scheduled_date: resched.date, scheduled_time: resched.time, room_id: candidate.id, room_number: candidate.name } : x));
+          setResched(null);
+        } catch (e2) {
+          window.showNotification?.({ type: 'error', title: 'Reschedule failed', message: e2?.message || 'No availability' });
+          setResched(s => ({ ...s, busy: false }));
+        }
+      } else {
+        window.showNotification?.({ type: 'error', title: 'Reschedule failed', message: e?.message || 'Unable to reschedule' });
+        setResched(s => ({ ...s, busy: false }));
+      }
+    }
+  };
+
+  const updateSessionStatus = async (sessionId, newStatus) => {
+    const prev = sessions;
+    setSessions(s => s.map(x => x.id === sessionId ? { ...x, status: newStatus } : x));
+    try {
+      await TherapySession.update(sessionId, { status: newStatus });
+      window.showNotification?.({ type: 'success', title: 'Status updated', message: newStatus.replace(/_/g,' ') });
+    } catch (e) {
+      setSessions(prev);
+      window.showNotification?.({ type: 'error', title: 'Update failed', message: e?.message || 'Unable to update status' });
+    }
+  };
+
   const addRow = () => {
     setRows(r => ([
       ...r,
@@ -363,10 +427,39 @@ function TherapyScheduling({ currentUser }) {
     } finally { setSchedulingBusy(false); }
   };
 
+  // Derived therapy list from data for filter dropdown
+  const allTherapies = Array.from(new Set((sessions || []).map(s => s.therapy_type).filter(Boolean))).sort();
+
+  // Apply filters
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const weekStart = (() => { const d=new Date(); const day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); d.setHours(0,0,0,0); return d; })();
+  const weekEnd = new Date(weekStart.getTime()+6*24*3600*1000+86399999);
+
+  const filteredSessions = sessions.filter(s => {
+    // status
+    if (filterStatus !== 'all' && s.status !== filterStatus) return false;
+    // therapy
+    if (filterTherapy && s.therapy_type !== filterTherapy) return false;
+    // date quick filters
+    const d = new Date(s.scheduled_date || s.scheduled_at || 0);
+    if (isNaN(d.getTime())) return false;
+    if (filterDate === 'today' && format(d,'yyyy-MM-dd') !== todayStr) return false;
+    if (filterDate === 'week' && !(d >= weekStart && d <= weekEnd)) return false;
+    if (filterDate === 'upcoming' && d < new Date()) return false;
+    // text
+    if (filterText) {
+      const pName = (getPatientName(s.patient_id) || '').toLowerCase();
+      const tName = (s.therapy_type || '').replace(/_/g,' ').toLowerCase();
+      const q = filterText.toLowerCase();
+      if (!pName.includes(q) && !tName.includes(q)) return false;
+    }
+    return true;
+  });
+
   // Group sessions by scheduled_date for compact list
   const sessionsByDate = (() => {
     const map = new Map();
-    const sorted = [...sessions].sort((a,b) => {
+    const sorted = [...filteredSessions].sort((a,b) => {
       const ad = new Date(a.scheduled_date || 0).getTime();
       const bd = new Date(b.scheduled_date || 0).getTime();
       if (ad !== bd) return ad - bd;
@@ -504,8 +597,9 @@ function TherapyScheduling({ currentUser }) {
     color: PropTypes.string.isRequired
   };
 
-  const SessionCard = ({ session }) => {
+  const SessionCard = ({ session, canManage, onChangeStatus, onOpenReschedule }) => {
     const visual = getTherapyVisual(session.therapy_type);
+    const label = String(session.status || 'scheduled').replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
     
     return (
       <motion.div
@@ -537,8 +631,30 @@ function TherapyScheduling({ currentUser }) {
               )}
             </div>
           </div>
-          {/* View-only: no edit/delete controls */}
+          <span className={`px-2 py-0.5 rounded-full text-[10px] border ${statusStyles[session.status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>{label}</span>
         </div>
+        {canManage && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {session.status === 'scheduled' && (
+              <>
+                <button onClick={()=>onChangeStatus(session.id,'in_progress')} className="px-2 py-1 text-xs rounded border bg-white inline-flex items-center gap-1"><PlayCircle className="w-3 h-3"/>Start</button>
+                <button onClick={()=>onChangeStatus(session.id,'completed')} className="px-2 py-1 text-xs rounded border bg-white inline-flex items-center gap-1"><CheckCircle className="w-3 h-3"/>Complete</button>
+                <button onClick={()=>onChangeStatus(session.id,'cancelled')} className="px-2 py-1 text-xs rounded border bg-white inline-flex items-center gap-1 text-rose-600"><XCircle className="w-3 h-3"/>Cancel</button>
+                <button onClick={()=>onOpenReschedule(session)} className="px-2 py-1 text-xs rounded border bg-white">Reschedule</button>
+              </>
+            )}
+            {session.status === 'in_progress' && (
+              <>
+                <button onClick={()=>onChangeStatus(session.id,'completed')} className="px-2 py-1 text-xs rounded border bg-white inline-flex items-center gap-1"><CheckCircle className="w-3 h-3"/>Complete</button>
+                <button onClick={()=>onChangeStatus(session.id,'cancelled')} className="px-2 py-1 text-xs rounded border bg-white inline-flex items-center gap-1 text-rose-600"><XCircle className="w-3 h-3"/>Cancel</button>
+                <button onClick={()=>onOpenReschedule(session)} className="px-2 py-1 text-xs rounded border bg-white">Reschedule</button>
+              </>
+            )}
+            {(session.status === 'completed' || session.status === 'cancelled') && (
+              <button onClick={()=>onChangeStatus(session.id,'scheduled')} className="px-2 py-1 text-xs rounded border bg-white inline-flex items-center gap-1"><RotateCcw className="w-3 h-3"/>Reopen</button>
+            )}
+          </div>
+        )}
       </motion.div>
     );
   };
@@ -551,7 +667,10 @@ function TherapyScheduling({ currentUser }) {
       scheduled_time: PropTypes.string,
       scheduled_date: PropTypes.string,
       room_number: PropTypes.string
-    }).isRequired
+    }).isRequired,
+    canManage: PropTypes.bool,
+    onChangeStatus: PropTypes.func,
+    onOpenReschedule: PropTypes.func
   };
 
   if (isLoading) {
@@ -798,8 +917,35 @@ function TherapyScheduling({ currentUser }) {
         />
       </div>
 
-      {/* Compact sessions list */}
+      {/* Filters + Compact sessions list */}
       <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-3 md:p-6 shadow-xl border border-white/50">
+        {/* Filters Toolbar */}
+        <div className="mb-4 flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+          <div className="flex flex-wrap gap-2">
+            {[
+              {key:'all', label:'All'},
+              {key:'scheduled', label:'Scheduled'},
+              {key:'in_progress', label:'In Progress'},
+              {key:'completed', label:'Completed'},
+              {key:'cancelled', label:'Cancelled'},
+            ].map(b => (
+              <button key={b.key} onClick={()=>setFilterStatus(b.key)} className={`px-3 py-1.5 rounded-full text-xs border ${filterStatus===b.key?'bg-gradient-to-r from-blue-600 to-indigo-600 text-white':'bg-white'}`}>{b.label}</button>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 w-full md:w-auto">
+            <select value={filterTherapy} onChange={(e)=>setFilterTherapy(e.target.value)} className="px-3 py-2 border rounded-lg">
+              <option value="">All therapies</option>
+              {allTherapies.map(t => (<option key={t} value={t}>{t.replace(/_/g,' ')}</option>))}
+            </select>
+            <select value={filterDate} onChange={(e)=>setFilterDate(e.target.value)} className="px-3 py-2 border rounded-lg">
+              <option value="all">All dates</option>
+              <option value="today">Today</option>
+              <option value="week">This week</option>
+              <option value="upcoming">Upcoming</option>
+            </select>
+            <input value={filterText} onChange={(e)=>setFilterText(e.target.value)} placeholder="Search patient or therapy" className="px-3 py-2 border rounded-lg" />
+          </div>
+        </div>
         {sessions.length === 0 ? (
           <div className="text-gray-500 text-center py-12">No sessions scheduled.</div>
         ) : (
@@ -816,7 +962,19 @@ function TherapyScheduling({ currentUser }) {
                   <AnimatePresence>
                     {sessionsByDate.get(dateKey).map(s => (
                       <div key={s.id} className="session-card">
-                        <SessionCard session={s} />
+                        <SessionCard session={s} canManage={canSchedule} onChangeStatus={updateSessionStatus} onOpenReschedule={openReschedule} />
+                        {canSchedule && resched?.id === s.id && (
+                          <div className="mt-2 p-2 border rounded-lg bg-white">
+                            <div className="grid grid-cols-2 gap-2">
+                              <input type="date" value={resched.date || ''} onChange={(e)=>setResched(rs=>({...rs, date: e.target.value}))} className="px-2 py-1 border rounded" />
+                              <input type="time" value={resched.time || ''} onChange={(e)=>setResched(rs=>({...rs, time: e.target.value}))} className="px-2 py-1 border rounded" />
+                            </div>
+                            <div className="mt-2 flex gap-2 justify-end">
+                              <button onClick={()=>saveReschedule(s)} disabled={resched.busy} className="px-3 py-1.5 rounded bg-gradient-to-r from-blue-600 to-indigo-600 text-white disabled:opacity-50">{resched.busy?'Saving...':'Save'}</button>
+                              <button onClick={cancelReschedule} disabled={resched.busy} className="px-3 py-1.5 rounded border">Cancel</button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </AnimatePresence>

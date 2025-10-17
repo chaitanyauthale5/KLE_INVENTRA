@@ -10,7 +10,7 @@ const therapySessionSchema = new mongoose.Schema(
     assigned_staff_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     room_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Room', index: true },
     // therapist_id removed - therapists no longer exist
-    status: { type: String, enum: ['scheduled','completed','cancelled'], default: 'scheduled', index: true },
+    status: { type: String, enum: ['scheduled','in_progress','completed','cancelled'], default: 'scheduled', index: true },
     scheduled_at: { type: Date, required: true, index: true },
     duration_min: { type: Number, default: 60 },
     notes: { type: String, trim: true },
