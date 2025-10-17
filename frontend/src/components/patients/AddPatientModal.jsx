@@ -18,7 +18,8 @@ export default function AddPatientModal({ isOpen, onClose, onPatientAdded, patie
     allergies: '',
     assignedDoctor: '',
     Id: '', // New field for  assignment
-    progressScore: 0
+    progressScore: 0,
+    password: '',
   });
   const [doctors, setDoctors] = useState([]); // Doctors list for assignment
   const [isLoading, setIsLoading] = useState(false);
@@ -53,7 +54,8 @@ export default function AddPatientModal({ isOpen, onClose, onPatientAdded, patie
         allergies: '',
         assignedDoctor: currentUser?.full_name || '', // Default to current doctor
         Id: '', // Reset Id for new patient
-        progressScore: 0
+        progressScore: 0,
+        password: '',
       });
     }
 
@@ -100,6 +102,13 @@ export default function AddPatientModal({ isOpen, onClose, onPatientAdded, patie
       setIsLoading(false);
       return;
     }
+    if (!patient) {
+      if (!formData.password || String(formData.password).length < 6) {
+        setError('Password must be at least 6 characters for a new patient login.');
+        setIsLoading(false);
+        return;
+      }
+    }
 
     try {
       const patientData = {
@@ -114,6 +123,7 @@ export default function AddPatientModal({ isOpen, onClose, onPatientAdded, patie
         full_name: formData.fullName,
         phone: formData.phone,
         email: formData.email,
+        password: patient ? undefined : formData.password,
         // doctor assignment id kept for future linkage if needed
         doctor_id: formData.Id || undefined,
         hospital_id: currentUser?.hospital_id, // Ensure hospital_id is set
@@ -195,6 +205,18 @@ export default function AddPatientModal({ isOpen, onClose, onPatientAdded, patie
                     <option value="other">Other</option>
                   </select>
                 </div>
+                {!patient && (
+                  <input
+                    name="password"
+                    type="password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    placeholder="Password for patient login (min 6)"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+                    required
+                    minLength={6}
+                  />
+                )}
                  <div className="relative">
                   <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input name="address" value={formData.address} onChange={handleChange} placeholder="Patient Address" className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500" />

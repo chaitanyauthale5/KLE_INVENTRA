@@ -53,7 +53,7 @@ export const updateStaff = async (req, res) => {
       return res.status(400).json({ message: 'User not in this hospital' });
     }
 
-    const allowedRoles = new Set(['doctor','office_executive']);
+    const allowedRoles = new Set(['doctor','office_executive','therapist']);
     if (!allowedRoles.has(user.role)) {
       return res.status(400).json({ message: 'Cannot update this role via hospital staff endpoint' });
     }
@@ -169,7 +169,7 @@ export const listStaff = async (req, res) => {
         return res.status(403).json({ message: 'Forbidden' });
       }
     }
-    const allowedRoles = ['doctor','office_executive'];
+    const allowedRoles = ['doctor','office_executive','therapist'];
     const hid = mongoose.Types.ObjectId.isValid(hospitalId) ? new mongoose.Types.ObjectId(hospitalId) : hospitalId;
     const users = await User.find({ $or: [ { hospital_id: hid }, { hospital_id: String(hid) } ], role: { $in: allowedRoles } });
     return res.json({ staff: users.map(u => u.toJSON()) });
@@ -224,12 +224,19 @@ export const assignStaff = async (req, res) => {
       }
     }
 
-    const allowedRoles = new Set(['doctor', 'office_executive']);
+    const allowedRoles = new Set(['doctor', 'office_executive', 'therapist']);
     if (!allowedRoles.has(String(role))) {
       return res.status(400).json({ message: 'Invalid role' });
     }
-    if (!full_name || !(email || username) || !password) {
-      return res.status(400).json({ message: 'full_name, password and one of email/username are required' });
+    if (!full_name) {
+      return res.status(400).json({ message: 'full_name is required' });
+    }
+    // For therapist, email/username/password can be omitted (no login needed). For others, require email/username + password
+    const isTherapist = String(role) === 'therapist';
+    if (!isTherapist) {
+      if (!(email || username) || !password) {
+        return res.status(400).json({ message: 'For non-therapists, password and one of email/username are required' });
+      }
     }
 
     // Ensure hospital exists
@@ -250,8 +257,13 @@ export const assignStaff = async (req, res) => {
       if (existingUsername) return res.status(409).json({ message: 'Username already taken' });
     }
 
+    // Compute password hash. If therapist and no password, generate a random one to satisfy schema requirement.
+    let passwordToUse = password;
+    if (isTherapist && !passwordToUse) {
+      passwordToUse = Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-10);
+    }
     const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(String(password), salt);
+    const passwordHash = await bcrypt.hash(String(passwordToUse), salt);
 
     const user = await User.create({
       name: full_name,
@@ -293,7 +305,12 @@ export const createHospital = async (req, res) => {
     if (!(isSuperAdmin(req.user) || isAdmin(req.user) || isHospitalAdmin(req.user))) {
       return res.status(403).json({ message: 'Forbidden' });
     }
-    const hospital = await Hospital.create(req.body);
+    const payload = { ...req.body };
+    // Link clinic to the creating super admin
+    if (isSuperAdmin(req.user)) {
+      payload.super_admin_id = req.user._id;
+    }
+    const hospital = await Hospital.create(payload);
     // If creator is not super admin, auto-assign this hospital to them if they don't already have one
     if (!isSuperAdmin(req.user)) {
       try {

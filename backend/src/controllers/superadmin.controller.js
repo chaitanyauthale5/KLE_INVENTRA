@@ -3,6 +3,7 @@ import { Hospital } from '../models/Hospital.js';
 import { User } from '../models/User.js';
 import { FinanceTransaction } from '../models/FinanceTransaction.js';
 import { PatientFeedback } from '../models/PatientFeedback.js';
+import bcrypt from 'bcryptjs';
 
 const toObjectId = (id) => {
   try { return new mongoose.Types.ObjectId(String(id)); } catch { return null; }
@@ -107,6 +108,10 @@ export const listClinics = async (req, res) => {
     const search = String(req.query.search || '').trim();
 
     const match = {};
+    // Only show clinics created/managed by this super admin
+    if (req.user?._id) {
+      match.super_admin_id = req.user._id;
+    }
     if (search) {
       match.$or = [
         { name: { $regex: search, $options: 'i' } },
@@ -293,11 +298,14 @@ export const createClinicAdmin = async (req, res) => {
       return res.status(409).json({ message: 'Clinic already has an admin' });
     }
 
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(String(password), salt);
+
     const user = new User({
       name: full_name,
       email: email || undefined,
       username: username || undefined,
-      passwordHash: password, // TODO: Replace with hashing in real implementation
+      passwordHash,
       role: 'clinic_admin',
       hospital_id: hid
     });

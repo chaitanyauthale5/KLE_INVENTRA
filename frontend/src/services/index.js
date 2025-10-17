@@ -184,6 +184,7 @@ export const Patient = {
     const payload = {
       name: body.full_name || body.name,
       email: body.email,
+      password: body.password, // optional: create linked user for patient login
       phone: body.phone,
       dob: body.dob,
       gender: body.gender,
@@ -213,6 +214,7 @@ export const Patient = {
     const payload = {
       name: body.full_name || body.name,
       email: body.email,
+      // Do not send password on update by default; backend ignores undefined
       phone: body.phone,
       dob: body.dob,
       gender: body.gender,

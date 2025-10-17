@@ -8,6 +8,7 @@ const hospitalSchema = new mongoose.Schema(
     state: { type: String, trim: true },
     phone: { type: String, trim: true },
     email: { type: String, trim: true },
+    super_admin_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     metadata: { type: Object, default: {} },
   },
   { timestamps: true }
