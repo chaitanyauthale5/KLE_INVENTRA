@@ -6,6 +6,7 @@ import { TherapySession } from '../models/TherapySession.js';
 import { Appointment } from '../models/Appointment.js';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import { sendMail } from '../utils/mailer.js';
 
 function isSuperAdmin(user) { return user?.role === 'super_admin'; }
 function isHospitalAdmin(user) { return user?.role === 'hospital_admin'; }
@@ -282,6 +283,50 @@ export const assignStaff = async (req, res) => {
       passwordHash,
       department: department || undefined,
     });
+
+    // Email credentials to staff (if email provided)
+    try {
+      if (email) {
+        const loginBase = process.env.APP_URL || (process.env.FRONTEND_ORIGINS || process.env.FRONTEND_ORIGIN || '').split(',')[0] || 'http://localhost:5173';
+        const loginUrl = `${loginBase}`;
+        const subject = `Your ${hospital.name || 'Clinic'} account credentials`;
+        const userIdent = email || (username ? String(username).toLowerCase() : '');
+        const html = `
+          <div style="font-family:Arial,sans-serif;">
+            <h2>Welcome to ${hospital.name || 'the Clinic'}</h2>
+            <p>You have been added as <strong>${role}</strong>.</p>
+            <div style="margin:10px 0;padding:10px;border:1px solid #eee;border-radius:8px;background:#fafafa">
+              <p style="margin:0 0 6px 0"><strong>Clinic details</strong></p>
+              <p style="margin:0">Name: ${hospital.name || ''}</p>
+              <p style="margin:0">Address: ${hospital.address || ''}</p>
+              <p style="margin:0">City/State: ${hospital.city || ''}${hospital.state ? ', ' + hospital.state : ''}</p>
+              <p style="margin:0">Phone: ${hospital.phone || ''}</p>
+              <p style="margin:0">Email: ${hospital.email || ''}</p>
+            </div>
+            <p><strong>Your Login:</strong> ${userIdent}</p>
+            <p><strong>Temporary Password:</strong> ${passwordToUse}</p>
+            ${department ? `<p><strong>Department:</strong> ${department}</p>` : ''}
+            <p>Sign in here: <a href="${loginUrl}" target="_blank" rel="noreferrer">${loginUrl}</a></p>
+            <p style="margin-top:10px;color:#555">Please sign in and change your password immediately.</p>
+          </div>
+        `;
+        const text = [
+          `You have been added as ${role} at ${hospital.name || ''}.`,
+          `Clinic: ${hospital.name || ''}`,
+          `Address: ${hospital.address || ''}`,
+          `City/State: ${hospital.city || ''}${hospital.state ? ', ' + hospital.state : ''}`,
+          `Phone: ${hospital.phone || ''}`,
+          `Email: ${hospital.email || ''}`,
+          `Login: ${userIdent}`,
+          `Temporary Password: ${passwordToUse}`,
+          department ? `Department: ${department}` : null,
+          `Sign in: ${loginUrl}`,
+        ].filter(Boolean).join('\n');
+        await sendMail({ to: email, subject, text, html });
+      }
+    } catch (mailErr) {
+      console.warn('[Hospitals] Failed to send staff onboarding email:', mailErr?.message || mailErr);
+    }
 
     return res.status(201).json({ message: 'Staff assigned', user: user.toJSON() });
   } catch (e) {

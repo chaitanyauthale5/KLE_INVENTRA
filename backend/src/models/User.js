@@ -16,6 +16,7 @@ const userSchema = new mongoose.Schema(
     has_selected_role: { type: Boolean, default: false },
     passwordHash: { type: String, required: true },
     department: { type: String, trim: true },
+    fcm_tokens: { type: [String], default: [] },
   },
   { timestamps: true }
 );
@@ -23,6 +24,7 @@ const userSchema = new mongoose.Schema(
 userSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.passwordHash;
+  delete obj.fcm_tokens;
   return obj;
 };
 

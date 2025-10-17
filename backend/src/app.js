@@ -15,6 +15,7 @@ import equipmentRoutes from './routes/equipments.routes.js';
 import feedbackRoutes from './routes/feedbacks.routes.js';
 import superAdminRoutes from './routes/superadmin.routes.js';
 import prescriptionRoutes from './routes/prescriptions.routes.js';
+import aiRoutes from './routes/ai.routes.js';
 import rescheduleRoutes from './routes/rescheduleRequests.routes.js';
 import { startScheduler } from './workers/scheduler.js';
 
@@ -85,6 +86,7 @@ app.use('/api/equipment', equipmentRoutes);
 app.use('/api/superadmin', superAdminRoutes);
 app.use('/api/prescriptions', prescriptionRoutes);
 app.use('/api/feedbacks', feedbackRoutes);
+app.use('/api/ai', aiRoutes);
 app.use('/api/reschedule-requests', rescheduleRoutes);
 
 // Health check
