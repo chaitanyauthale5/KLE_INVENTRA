@@ -319,7 +319,50 @@ export const Prescription = {
 };
 
 // Stubs kept for compile-time imports that may exist elsewhere
-export const Feedback = { list: async () => [], filter: async () => [], create: async () => ({}), update: async () => ({}), delete: async () => ({}) };
+function mapFeedbackForUI(f) {
+  const id = f?.id || f?._id;
+  const patientObj = f?.patient_id && typeof f.patient_id === 'object' ? f.patient_id : null;
+  const patient_id = patientObj ? (patientObj._id || patientObj.id) : (f?.patient_user_id ?? f?.patient_id ?? f?.patientId);
+  return normalizeId({
+    ...f,
+    id,
+    message: f?.message ?? f?.comment ?? '',
+    patient_user_id: patient_id,
+    patient_name: f?.patient_name ?? patientObj?.name ?? f?.patient?.name,
+    hospital_id: f?.hospital_id ?? f?.hospitalId,
+    admin_response: f?.admin_response ?? '',
+    admin_responded_at: f?.admin_responded_at ?? f?.adminRespondedAt,
+    created_date: f?.createdAt || f?.created_date,
+    updated_date: f?.updatedAt || f?.updated_date,
+  });
+}
+
+export const Feedback = {
+  async list() {
+    const data = await api('/api/feedbacks');
+    return (data?.feedbacks || data?.items || []).map(mapFeedbackForUI);
+  },
+  async filter(query = {}, sort, limit) {
+    const params = new URLSearchParams({ ...(query || {}) });
+    if (sort) params.set('sort', sort);
+    if (limit) params.set('limit', String(limit));
+    const qs = params.toString();
+    const data = await api(`/api/feedbacks${qs ? `?${qs}` : ''}`);
+    return (data?.feedbacks || data?.items || []).map(mapFeedbackForUI);
+  },
+  async create(payload) {
+    const data = await api('/api/feedbacks', { method: 'POST', body: payload });
+    return mapFeedbackForUI(data?.feedback || data);
+  },
+  async update(id, body) {
+    const data = await api(`/api/feedbacks/${id}`, { method: 'PUT', body });
+    return mapFeedbackForUI(data?.feedback || data);
+  },
+  async delete(id) {
+    await api(`/api/feedbacks/${id}`, { method: 'DELETE' });
+    return true;
+  },
+};
 export const Notification = { list: async () => [], filter: async () => [], create: async () => ({}), update: async () => ({}), delete: async () => ({}) };
 export const ConsultationLog = { list: async () => [], filter: async () => [], create: async () => ({}), update: async () => ({}), delete: async () => ({}) };
 

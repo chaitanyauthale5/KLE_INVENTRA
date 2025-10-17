@@ -10,6 +10,7 @@ import sessionRoutes from './routes/sessions.routes.js';
 import notificationRoutes from './routes/notifications.routes.js';
 import reportRoutes from './routes/reports.routes.js';
 import appointmentRoutes from './routes/appointments.routes.js';
+import feedbackRoutes from './routes/feedbacks.routes.js';
 import superAdminRoutes from './routes/superadmin.routes.js';
 import prescriptionRoutes from './routes/prescriptions.routes.js';
 
@@ -77,6 +78,7 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/appointments', appointmentRoutes);
 app.use('/api/superadmin', superAdminRoutes);
 app.use('/api/prescriptions', prescriptionRoutes);
+app.use('/api/feedbacks', feedbackRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

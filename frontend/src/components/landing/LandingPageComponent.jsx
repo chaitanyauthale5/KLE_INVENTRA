@@ -229,18 +229,10 @@ export default function LandingPageComponent({ onLogin, onNavigateToApp }) {
   const [currentUser, setCurrentUser] = useState(null);
 
   const handleRequestDemo = async () => {
-    setIsGeneratingDemo(true);
     try {
-      const videoUrl = "https://www.learningcontainer.com/wp-content/uploads/2020/05/sample-mp4-file.mp4"; // Example video URL
-
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate delay
-
-      setGeneratedVideoUrl(videoUrl);
-      setShowDemoVideo(true);
-    } catch (error) {
-      console.error("Failed to generate demo video:", error);
+      // Open the demo modal with YouTube embed
       setGeneratedVideoUrl(null);
-      setShowDemoVideo(true); // Still show modal, but with placeholder
+      setShowDemoVideo(true);
     } finally {
       setIsGeneratingDemo(false);
     }
@@ -1159,17 +1151,16 @@ export default function LandingPageComponent({ onLogin, onNavigateToApp }) {
                   </video>
                 </div>
               ) : (
-                <div className="aspect-video bg-gradient-to-br from-blue-100 to-green-100 rounded-2xl flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="w-16 h-16 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Play className="w-8 h-8 text-white ml-1" />
-                    </div>
-                    <h4 className="text-xl font-bold text-gray-800 mb-2">Interactive Demo</h4>
-                    <p className="text-gray-600 max-w-md">
-                      Explore AyurSutra's powerful features including patient management,
-                      therapy scheduling, progress tracking, and AI-assisted consultations.
-                    </p>
-                  </div>
+                <div className="aspect-video bg-black rounded-2xl overflow-hidden">
+                  <iframe
+                    className="w-full h-full"
+                    src="https://www.youtube.com/embed/sAODqYlRrxk?si=p1LKbHUmqRKSw_mb&autoplay=1&rel=0&modestbranding=1&playsinline=1"
+                    title="AyurSutra Live Demo"
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                    loading="lazy"
+                  />
                 </div>
               )}
 
