@@ -1,5 +1,6 @@
 import { Room } from '../models/Room.js';
 import { TherapySession } from '../models/TherapySession.js';
+import { Hospital } from '../models/Hospital.js';
 
 function isSuper(user) { return user?.role === 'super_admin'; }
 function isHospAdmin(user) { return ['hospital_admin','admin','clinic_admin'].includes(user?.role); }
@@ -22,20 +23,37 @@ export const listRooms = async (req, res) => {
 
 export const availability = async (req, res) => {
   try {
-    const { therapy_type, date, time, duration_min } = req.query || {};
+    const { therapy_type, date, time, duration_min, hospital_id: qHosp } = req.query || {};
     if (!date || !time) return res.status(400).json({ message: 'date and time are required' });
     const duration = Math.max(10, Number(duration_min) || 60);
     const start = new Date(`${date}T${time}:00Z`.replace('Z', ''));
     // Interpret in local timezone; if server runs UTC, it is still consistent for day-bound query
     const newStart = new Date(start);
-    const newEnd = new Date(newStart.getTime() + duration * 60000);
 
     const roomFilter = { status: 'active' };
     if (!isSuper(req.user)) {
       if (!req.user.hospital_id) return res.status(403).json({ message: 'Forbidden' });
       roomFilter.hospital_id = req.user.hospital_id;
-    } else if (req.query.hospital_id) {
-      roomFilter.hospital_id = req.query.hospital_id;
+    } else if (qHosp) {
+      roomFilter.hospital_id = qHosp;
+    }
+
+    const hospital = roomFilter.hospital_id ? await Hospital.findById(roomFilter.hospital_id) : null;
+    const cfg = (hospital?.therapy_config || {})[String(therapy_type || '').toLowerCase()] || {};
+    const bufferMin = Math.max(0, Number(cfg.buffer_min) || 0);
+    const newEnd = new Date(newStart.getTime() + (duration + bufferMin) * 60000);
+    // Business hours and blackout
+    if (hospital) {
+      const dow = ['sun','mon','tue','wed','thu','fri','sat'][newStart.getDay()];
+      const bh = hospital.business_hours?.[dow];
+      const toHM = (d) => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      const toMin = (s) => { const [h,m]=String(s||'').split(':'); return (Number(h)||0)*60+(Number(m)||0); };
+      if (!bh) return res.json({ rooms: [] });
+      const stM = toMin(toHM(newStart));
+      if (stM < toMin(bh.start) || stM >= toMin(bh.end)) return res.json({ rooms: [] });
+      if (cfg.allowed_hours && (stM < toMin(cfg.allowed_hours.start) || stM >= toMin(cfg.allowed_hours.end))) return res.json({ rooms: [] });
+      const dateStr = String(date);
+      if (Array.isArray(hospital.blackout_dates) && hospital.blackout_dates.includes(dateStr)) return res.json({ rooms: [] });
     }
 
     let rooms = await Room.find(roomFilter).sort({ name: 1 });

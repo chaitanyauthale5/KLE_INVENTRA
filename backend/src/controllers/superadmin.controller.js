@@ -4,8 +4,12 @@ import { User } from '../models/User.js';
 import { FinanceTransaction } from '../models/FinanceTransaction.js';
 import { PatientFeedback } from '../models/PatientFeedback.js';
 import bcrypt from 'bcryptjs';
+<<<<<<< HEAD
 import { User as UserModel } from '../models/User.js';
 import { TherapySession } from '../models/TherapySession.js';
+=======
+import { sendMail } from '../utils/mailer.js';
+>>>>>>> 4fd5df5b46c9883ddf4e4a199f6ea0c7a1aa238b
 
 const toObjectId = (id) => {
   try { return new mongoose.Types.ObjectId(String(id)); } catch { return null; }
@@ -450,6 +454,41 @@ export const createClinicAdmin = async (req, res) => {
       hospital_id: hid
     });
     await user.save();
+
+    // Send credentials email to clinic and/or admin
+    try {
+      const hospital = await Hospital.findById(hid).lean();
+      const loginBase = process.env.APP_URL || (process.env.FRONTEND_ORIGINS || process.env.FRONTEND_ORIGIN || '').split(',')[0] || 'http://localhost:5173';
+      const loginUrl = `${loginBase}`;
+      const recipients = [email, hospital?.email].filter(Boolean).join(', ');
+      if (recipients) {
+        const subject = `Clinic Admin Access for ${hospital?.name || 'your clinic'}`;
+        const userIdent = email || username;
+        const html = `
+          <div style="font-family:Arial,sans-serif;">
+            <h2>Welcome to AyurSutra</h2>
+            <p>Clinic <strong>${hospital?.name || ''}</strong> has been set up with an Admin account.</p>
+            <div style="margin:10px 0;padding:10px;border:1px solid #eee;border-radius:8px;background:#fafafa">
+              <p style="margin:0 0 6px 0"><strong>Clinic details</strong></p>
+              <p style="margin:0">Name: ${hospital?.name || ''}</p>
+              <p style="margin:0">Address: ${hospital?.address || ''}</p>
+              <p style="margin:0">City/State: ${hospital?.city || ''}${hospital?.state ? ', ' + hospital.state : ''}</p>
+              <p style="margin:0">Phone: ${hospital?.phone || ''}</p>
+              <p style="margin:0">Email: ${hospital?.email || ''}</p>
+            </div>
+            <p><strong>Admin Name:</strong> ${full_name}</p>
+            <p><strong>Login:</strong> ${userIdent}</p>
+            <p><strong>Temporary Password:</strong> ${password}</p>
+            <p>Sign in here: <a href="${loginUrl}" target="_blank" rel="noreferrer">${loginUrl}</a></p>
+            <p style="margin-top:10px;color:#555">For security, please sign in and change your password immediately.</p>
+          </div>
+        `;
+        const text = `Clinic Admin Access\nClinic: ${hospital?.name || ''}\nAddress: ${hospital?.address || ''}\nCity/State: ${hospital?.city || ''}${hospital?.state ? ', ' + hospital.state : ''}\nPhone: ${hospital?.phone || ''}\nEmail: ${hospital?.email || ''}\nAdmin: ${full_name}\nLogin: ${userIdent}\nTemporary Password: ${password}\nSign in: ${loginUrl}`;
+        await sendMail({ to: recipients, subject, text, html });
+      }
+    } catch (mailErr) {
+      console.warn('[SuperAdmin] Failed to send clinic admin credentials email:', mailErr?.message || mailErr);
+    }
     return res.status(201).json({ admin: user.toJSON() });
   } catch (e) {
     console.error('createClinicAdmin error:', e);
@@ -471,6 +510,38 @@ export const reassignClinicAdmin = async (req, res) => {
     await User.updateMany({ role: 'clinic_admin', hospital_id: hid }, { $set: { role: 'doctor' } });
     const newAdmin = await User.findByIdAndUpdate(uid, { role: 'clinic_admin', hospital_id: hid }, { new: true });
     if (!newAdmin) return res.status(404).json({ message: 'User not found' });
+
+    // Notify reassigned admin and clinic email
+    try {
+      const hospital = await Hospital.findById(hid).lean();
+      const loginBase = process.env.APP_URL || (process.env.FRONTEND_ORIGINS || process.env.FRONTEND_ORIGIN || '').split(',')[0] || 'http://localhost:5173';
+      const loginUrl = `${loginBase}`;
+      const recipients = [newAdmin.email, hospital?.email].filter(Boolean).join(', ');
+      if (recipients) {
+        const subject = `You are now Clinic Admin for ${hospital?.name || 'your clinic'}`;
+        const html = `
+          <div style="font-family:Arial,sans-serif;">
+            <h2>Admin Role Assigned</h2>
+            <p>Hello ${newAdmin.name || 'User'}, you have been assigned as <strong>Clinic Admin</strong> for <strong>${hospital?.name || ''}</strong>.</p>
+            <div style="margin:10px 0;padding:10px;border:1px solid #eee;border-radius:8px;background:#fafafa">
+              <p style="margin:0 0 6px 0"><strong>Clinic details</strong></p>
+              <p style="margin:0">Name: ${hospital?.name || ''}</p>
+              <p style="margin:0">Address: ${hospital?.address || ''}</p>
+              <p style="margin:0">City/State: ${hospital?.city || ''}${hospital?.state ? ', ' + hospital.state : ''}</p>
+              <p style="margin:0">Phone: ${hospital?.phone || ''}</p>
+              <p style="margin:0">Email: ${hospital?.email || ''}</p>
+            </div>
+            <p>Please sign in using your existing account credentials.</p>
+            <p>Sign in: <a href="${loginUrl}" target="_blank" rel="noreferrer">${loginUrl}</a></p>
+            <p style="margin-top:10px;color:#555">If you forgot your password, please contact support to reset it.</p>
+          </div>
+        `;
+        const text = `You are now Clinic Admin for ${hospital?.name || ''}.\nAddress: ${hospital?.address || ''}\nCity/State: ${hospital?.city || ''}${hospital?.state ? ', ' + hospital.state : ''}\nPhone: ${hospital?.phone || ''}\nEmail: ${hospital?.email || ''}\nSign in: ${loginUrl}`;
+        await sendMail({ to: recipients, subject, text, html });
+      }
+    } catch (mailErr) {
+      console.warn('[SuperAdmin] Failed to send reassignment email:', mailErr?.message || mailErr);
+    }
 
     return res.json({ admin: newAdmin.toJSON() });
   } catch (e) {

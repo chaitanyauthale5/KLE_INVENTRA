@@ -5,6 +5,7 @@ import { Patient } from "@/services";
 import { User } from "@/services";
 import { Hospital } from "@/services";
 import { Rooms } from "@/services";
+import { RescheduleRequests } from "@/services";
  
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -209,16 +210,127 @@ function TherapyScheduling({ currentUser }) {
 
   const canSchedule = (self?.role === 'office_executive' || self?.role === 'super_admin');
 
+  // Pending reschedule requests (office executive view)
+  const [reqs, setReqs] = useState([]);
+  const [reqBusyId, setReqBusyId] = useState(null);
+  const [suggestions, setSuggestions] = useState({}); // reqId -> [{date,time,label}]
+  const loadRequests = useCallback(async () => {
+    try {
+      const list = await RescheduleRequests.list({ status: 'pending' });
+      setReqs(Array.isArray(list) ? list : []);
+    } catch {
+      setReqs([]);
+    }
+  }, []);
+  useEffect(() => {
+    if (!canSchedule) return;
+    loadRequests();
+    const id = setInterval(loadRequests, 30000);
+    return () => clearInterval(id);
+  }, [canSchedule, loadRequests]);
+
+  const approveRequest = async (req) => {
+    setReqBusyId(req.id);
+    try {
+      await RescheduleRequests.update(req.id, { status: 'approved' });
+      setReqs(list => list.filter(r => r.id !== req.id));
+      window.showNotification?.({ type: 'success', title: 'Approved' });
+    } catch (e) {
+      window.showNotification?.({ type: 'error', title: 'Failed', message: e?.message || 'Unable to approve' });
+    } finally { setReqBusyId(null); }
+  };
+  const rejectRequest = async (req) => {
+    setReqBusyId(req.id);
+    try {
+      await RescheduleRequests.update(req.id, { status: 'rejected' });
+      setReqs(list => list.filter(r => r.id !== req.id));
+      window.showNotification?.({ type: 'success', title: 'Rejected' });
+    } catch (e) {
+      window.showNotification?.({ type: 'error', title: 'Failed', message: e?.message || 'Unable to reject' });
+    } finally { setReqBusyId(null); }
+  };
+  const rescheduleFromRequest = (req) => {
+    const s = sessions.find(x => String(x.id) === String(req.session_id));
+    if (!s) return window.showNotification?.({ type: 'error', title: 'Session not found' });
+    openReschedule(s, req.id);
+  };
+
+  // Suggest top 3 slots using Rooms.availability + local conflict checks
+  const pad2 = (n) => String(n).padStart(2,'0');
+  const toDate = (d) => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+  const hasOverlap = (patientId, staffId, date, time, duration) => {
+    const start = new Date(`${date}T${time}:00`);
+    const end = new Date(start.getTime() + (Number(duration)||60)*60000);
+    return sessions.some(x => {
+      if (x.status === 'cancelled') return false;
+      if ((patientId && String(x.patient_id) === String(patientId)) || (staffId && x.assigned_staff_id && String(x.assigned_staff_id) === String(staffId))) {
+        const xs = new Date(x.scheduled_date ? `${x.scheduled_date}T${(x.scheduled_time||'00:00')}:00` : x.scheduled_at);
+        if (isNaN(xs.getTime())) return false;
+        const xe = new Date(xs.getTime() + (Number(x.duration_min)||60)*60000);
+        return xs < end && start < xe;
+      }
+      return false;
+    });
+  };
+  const suggestSlots = async (req) => {
+    const s = sessions.find(x => String(x.id) === String(req.session_id));
+    if (!s) return window.showNotification?.({ type: 'error', title: 'Session not found' });
+    const baseDate = req.requested_date || s.scheduled_date;
+    const baseTime = req.requested_time || s.scheduled_time || '10:00';
+    const out = [];
+    // Check same time for next 7 days
+    for (let i=0; i<7 && out.length<3; i++) {
+      const d = new Date(`${baseDate}T00:00:00`);
+      d.setDate(d.getDate()+i);
+      const dateStr = toDate(d);
+      try {
+        const avail = await Rooms.availability({ therapy_type: s.therapy_type, date: dateStr, time: baseTime, duration_min: s.duration_min });
+        const hasSpot = (avail||[]).some(r => (r.available_spots||0) > 0);
+        if (hasSpot && !hasOverlap(s.patient_id, s.assigned_staff_id, dateStr, baseTime, s.duration_min)) {
+          out.push({ date: dateStr, time: baseTime, label: `${dateStr} ${baseTime}` });
+        }
+      } catch {}
+    }
+    // If less than 3, try +/- 30 mins same days
+    const offsets = [30, -30, 60, -60];
+    for (let i=0; i<7 && out.length<3; i++) {
+      const d = new Date(`${baseDate}T00:00:00`); d.setDate(d.getDate()+i);
+      const dateStr = toDate(d);
+      for (const off of offsets) {
+        if (out.length>=3) break;
+        const [hh,mm] = baseTime.split(':').map(Number);
+        const cand = new Date(`${dateStr}T${pad2(hh)}:${pad2(mm)}:00`);
+        cand.setMinutes(cand.getMinutes()+off);
+        const tStr = `${pad2(cand.getHours())}:${pad2(cand.getMinutes())}`;
+        try {
+          const avail = await Rooms.availability({ therapy_type: s.therapy_type, date: dateStr, time: tStr, duration_min: s.duration_min });
+          const hasSpot = (avail||[]).some(r => (r.available_spots||0) > 0);
+          if (hasSpot && !hasOverlap(s.patient_id, s.assigned_staff_id, dateStr, tStr, s.duration_min)) {
+            out.push({ date: dateStr, time: tStr, label: `${dateStr} ${tStr}` });
+          }
+        } catch {}
+      }
+    }
+    setSuggestions(prev => ({ ...prev, [req.id]: out.slice(0,3) }));
+  };
+  const applySuggestion = (req, cand) => {
+    const s = sessions.find(x => String(x.id) === String(req.session_id));
+    if (!s) return; 
+    setResched({ id: s.id, date: cand.date, time: cand.time, busy: false, requestId: req.id });
+  };
+
   const statusStyles = {
     scheduled: 'bg-gray-100 text-gray-700 border-gray-200',
     in_progress: 'bg-sky-50 text-sky-700 border-sky-200',
     completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     cancelled: 'bg-rose-50 text-rose-700 border-rose-200',
+    awaiting_confirmation: 'bg-amber-50 text-amber-700 border-amber-200',
+    no_show: 'bg-gray-100 text-gray-600 border-gray-200',
   };
 
   const [resched, setResched] = useState(null);
-  const openReschedule = (session) => {
-    setResched({ id: session.id, date: session.scheduled_date || '', time: session.scheduled_time || '', busy: false });
+  const openReschedule = (session, requestId) => {
+    setResched({ id: session.id, date: session.scheduled_date || '', time: session.scheduled_time || '', busy: false, requestId: requestId || null });
   };
   const cancelReschedule = () => setResched(null);
   const saveReschedule = async (session) => {
@@ -229,9 +341,14 @@ function TherapyScheduling({ currentUser }) {
     const duration = session.duration_min || 60;
     setResched(s => ({ ...s, busy: true }));
     try {
-      await TherapySession.update(session.id, { scheduled_at: iso, duration_min: duration, ...(session.room_id ? { room_id: session.room_id } : {}) });
+      await TherapySession.update(session.id, { scheduled_at: iso, duration_min: duration, status: 'awaiting_confirmation', ...(session.room_id ? { room_id: session.room_id } : {}) });
       window.showNotification?.({ type: 'success', title: 'Rescheduled' });
       setSessions(ss => ss.map(x => x.id === session.id ? { ...x, scheduled_date: resched.date, scheduled_time: resched.time } : x));
+      // If this reschedule came from a pending request, approve it
+      if (resched?.requestId) {
+        try { await RescheduleRequests.update(resched.requestId, { status: 'approved' }); } catch {}
+        setReqs(list => list.filter(r => String(r.id) !== String(resched.requestId)));
+      }
       setResched(null);
     } catch (e) {
       if (e?.status === 409) {
@@ -239,9 +356,13 @@ function TherapyScheduling({ currentUser }) {
           const avail = await Rooms.availability({ therapy_type: session.therapy_type, date: resched.date, time: resched.time, duration_min: duration });
           const candidate = (avail || []).find(r => (r.available_spots || 0) > 0);
           if (!candidate) throw new Error('No room available at the selected time');
-          await TherapySession.update(session.id, { scheduled_at: iso, duration_min: duration, room_id: candidate.id });
+          await TherapySession.update(session.id, { scheduled_at: iso, duration_min: duration, status: 'awaiting_confirmation', room_id: candidate.id });
           window.showNotification?.({ type: 'success', title: 'Rescheduled', message: `Room auto-assigned: ${candidate.name}` });
           setSessions(ss => ss.map(x => x.id === session.id ? { ...x, scheduled_date: resched.date, scheduled_time: resched.time, room_id: candidate.id, room_number: candidate.name } : x));
+          if (resched?.requestId) {
+            try { await RescheduleRequests.update(resched.requestId, { status: 'approved' }); } catch {}
+            setReqs(list => list.filter(r => String(r.id) !== String(resched.requestId)));
+          }
           setResched(null);
         } catch (e2) {
           window.showNotification?.({ type: 'error', title: 'Reschedule failed', message: e2?.message || 'No availability' });
@@ -459,13 +580,27 @@ function TherapyScheduling({ currentUser }) {
   // Group sessions by scheduled_date for compact list
   const sessionsByDate = (() => {
     const map = new Map();
-    const sorted = [...filteredSessions].sort((a,b) => {
+    const now = new Date();
+    const toDateTime = (s) => {
+      if (s.scheduled_date) {
+        const t = s.scheduled_time ? `${s.scheduled_time}:00` : '00:00:00';
+        return new Date(`${s.scheduled_date}T${t}`);
+      }
+      return new Date(s.scheduled_at || 0);
+    };
+    const sorted = [...filteredSessions]
+      .filter(s => {
+        const dt = toDateTime(s);
+        return !isNaN(dt.getTime()) && dt >= now; // upcoming only
+      })
+      .sort((a,b) => {
       const ad = new Date(a.scheduled_date || 0).getTime();
       const bd = new Date(b.scheduled_date || 0).getTime();
       if (ad !== bd) return ad - bd;
       return String(a.scheduled_time || '').localeCompare(String(b.scheduled_time || ''));
     });
-    sorted.forEach(s => {
+    const list = sorted.slice(0, 5);
+    list.forEach(s => {
       const key = s.scheduled_date || 'Unknown Date';
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(s);
@@ -916,6 +1051,45 @@ function TherapyScheduling({ currentUser }) {
           color="from-orange-500 to-orange-600"
         />
       </div>
+
+      {/* Pending Reschedule Requests - Office Executive */}
+      {canSchedule && reqs.length > 0 && (
+        <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-3 md:p-6 shadow-xl border border-white/50">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base md:text-lg font-semibold text-gray-800">Reschedule Requests</h2>
+            <button onClick={loadRequests} className="px-3 py-1.5 text-xs rounded border">Refresh</button>
+          </div>
+          <div className="space-y-2">
+            {reqs.map(r => {
+              const s = sessions.find(x => String(x.id) === String(r.session_id));
+              const when = s ? `${s.scheduled_date || ''} ${s.scheduled_time || ''}` : '';
+              const pref = [r.requested_date, r.requested_time].filter(Boolean).join(' ');
+              return (
+                <div key={r.id} className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 p-3 border rounded-xl">
+                  <div className="text-sm">
+                    <div className="font-medium">{s ? s.therapy_type.replace(/_/g,' ') : 'Session'} • {when}</div>
+                    <div className="text-gray-600">{getPatientName(s?.patient_id)}{pref ? ` • Pref: ${pref}` : ''}</div>
+                    {r.reason && <div className="text-xs text-gray-500 mt-0.5">Reason: {r.reason}</div>}
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => rescheduleFromRequest(r)} className="px-3 py-1.5 rounded border">Reschedule</button>
+                    <button onClick={() => suggestSlots(r)} className="px-3 py-1.5 rounded border">Suggest slots</button>
+                    <button onClick={() => approveRequest(r)} disabled={reqBusyId===r.id} className="px-3 py-1.5 rounded bg-emerald-600 text-white disabled:opacity-50">Approve</button>
+                    <button onClick={() => rejectRequest(r)} disabled={reqBusyId===r.id} className="px-3 py-1.5 rounded border text-rose-600 disabled:opacity-50">Reject</button>
+                  </div>
+                  {Array.isArray(suggestions[r.id]) && suggestions[r.id].length > 0 && (
+                    <div className="md:col-span-2 flex flex-wrap gap-2 mt-2">
+                      {suggestions[r.id].map((c, idx) => (
+                        <button key={idx} onClick={() => applySuggestion(r, c)} className="px-2 py-1 text-xs rounded-full border bg-white">{c.label}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Filters + Compact sessions list */}
       <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-3 md:p-6 shadow-xl border border-white/50">

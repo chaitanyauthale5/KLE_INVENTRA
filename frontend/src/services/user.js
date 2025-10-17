@@ -102,4 +102,12 @@ export const User = {
     } catch {}
     return true;
   },
+  async requestEmailOtp(email, purpose = 'signup') {
+    await api('/api/auth/otp/send-email', { method: 'POST', body: { email, purpose } });
+    return true;
+  },
+  async verifyEmailOtp(email, code, purpose = 'signup') {
+    const data = await api('/api/auth/otp/verify-email', { method: 'POST', body: { email, code, purpose } });
+    return !!(data && (data.valid === true));
+  },
 };
