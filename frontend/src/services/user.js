@@ -1,3 +1,4 @@
+import { initPush } from '@/firebase/messaging.js'
 // Backend REST configuration
 const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) || '';
 
@@ -80,6 +81,7 @@ export const User = {
       localStorage.setItem('ayursutra_token', token);
       localStorage.setItem('ayursutra_current_user_id', user?._id || user?.id || '');
     } catch {}
+    try { await initPush(); } catch {}
     return normalizeUser(user);
   },
   async register({ full_name, email, phone, password, role = 'patient' }) {
@@ -91,6 +93,7 @@ export const User = {
       localStorage.setItem('ayursutra_token', token);
       localStorage.setItem('ayursutra_current_user_id', user?._id || user?.id || '');
     } catch {}
+    try { await initPush(); } catch {}
     return normalizeUser(user);
   },
   async logout() {

@@ -15,6 +15,11 @@ import equipmentRoutes from './routes/equipments.routes.js';
 import feedbackRoutes from './routes/feedbacks.routes.js';
 import superAdminRoutes from './routes/superadmin.routes.js';
 import prescriptionRoutes from './routes/prescriptions.routes.js';
+<<<<<<< HEAD
+import aiRoutes from './routes/ai.routes.js';
+=======
+import rescheduleRoutes from './routes/rescheduleRequests.routes.js';
+>>>>>>> 4fd5df5b46c9883ddf4e4a199f6ea0c7a1aa238b
 
 // Load env before reading process.env in this module
 dotenv.config();
@@ -83,11 +88,27 @@ app.use('/api/equipment', equipmentRoutes);
 app.use('/api/superadmin', superAdminRoutes);
 app.use('/api/prescriptions', prescriptionRoutes);
 app.use('/api/feedbacks', feedbackRoutes);
+<<<<<<< HEAD
+app.use('/api/ai', aiRoutes);
+=======
+app.use('/api/reschedule-requests', rescheduleRoutes);
+>>>>>>> 4fd5df5b46c9883ddf4e4a199f6ea0c7a1aa238b
 
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
+
+// Start background scheduler unless explicitly disabled
+try {
+  if (process.env.SCHEDULER_DISABLED !== '1') {
+    startScheduler();
+  } else {
+    console.log('[Scheduler] disabled by env SCHEDULER_DISABLED=1');
+  }
+} catch (e) {
+  console.warn('[Scheduler] failed to start:', e?.message || e);
+}
 
 // 404 handler
 app.use((req, res) => {
