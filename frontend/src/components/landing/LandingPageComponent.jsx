@@ -469,7 +469,7 @@ export default function LandingPageComponent({ onLogin, onNavigateToApp }) {
                   whileTap={{ scale: 0.98 }}
                 >
                   <Play className="w-6 h-6" />
-                  {isGeneratingDemo ? 'Preparing Demo...' : 'Watch Live Demo'}
+                  {isGeneratingDemo ? 'Preparing Demo...' : 'What is Panchkarma ?'}
                 </motion.button>
 
                 {currentUser ? (
@@ -954,7 +954,7 @@ export default function LandingPageComponent({ onLogin, onNavigateToApp }) {
                   whileHover={{ scale: 1.05, y: -3 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  Watch Demo Video
+                  What is Panchakarma ?
                 </motion.button>
               </div>
             </div>
