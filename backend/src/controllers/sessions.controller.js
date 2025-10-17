@@ -1,5 +1,7 @@
 import { TherapySession } from '../models/TherapySession.js';
 import { Room } from '../models/Room.js';
+import { Hospital } from '../models/Hospital.js';
+import { User } from '../models/User.js';
 
 function isSuper(user) { return user?.role === 'super_admin'; }
 function isHospAdmin(user) {
@@ -67,13 +69,63 @@ export const createSession = async (req, res) => {
       body.therapy_type = String(body.therapy_type).toLowerCase().trim().replace(/\s+/g, '_');
     }
 
-    // Validate room capacity / auto-assign
     const duration = Math.max(10, Number(body.duration_min) || 60);
     const at = new Date(body.scheduled_at);
     if (isNaN(at.getTime())) return res.status(400).json({ message: 'scheduled_at invalid' });
+    const hospital = await Hospital.findById(body.hospital_id);
+    const policies = hospital?.policies || {};
+    const biz = hospital?.business_hours || {};
+    const cfg = (hospital?.therapy_config || {})[String(body.therapy_type || '').toLowerCase()] || {};
+    const bufferMin = Math.max(0, Number(cfg.buffer_min) || 0);
     const start = new Date(at);
-    const end = new Date(start.getTime() + duration * 60000);
-
+    const end = new Date(start.getTime() + (duration + bufferMin) * 60000);
+    const dow = ['sun','mon','tue','wed','thu','fri','sat'][start.getDay()];
+    const bh = biz && biz[dow];
+    const toHM = (d) => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    const toMin = (s) => { const [h,m]=String(s||'').split(':'); return (Number(h)||0)*60+(Number(m)||0); };
+    if (!bh) return res.status(409).json({ message: 'Clinic closed' });
+    const stM = toMin(toHM(start));
+    if (stM < toMin(bh.start) || stM >= toMin(bh.end)) return res.status(409).json({ message: 'Outside business hours' });
+    if (cfg.allowed_hours && (stM < toMin(cfg.allowed_hours.start) || stM >= toMin(cfg.allowed_hours.end))) return res.status(409).json({ message: 'Therapy not allowed at this time' });
+    const dateStr = start.toISOString().slice(0,10);
+    if (Array.isArray(hospital?.blackout_dates) && hospital.blackout_dates.includes(dateStr)) return res.status(409).json({ message: 'Clinic holiday' });
+    if (!isSuper(req.user)) {
+      const leadH = Math.max(0, Number(policies.lead_time_hours) || 0);
+      if (leadH > 0 && start.getTime() < Date.now() + leadH*3600000) return res.status(409).json({ message: `Must schedule at least ${leadH}h in advance` });
+    }
+    const dayStart = new Date(start); dayStart.setHours(0,0,0,0);
+    const dayEnd = new Date(start); dayEnd.setHours(23,59,59,999);
+    if (hospital?.policies?.max_sessions_per_patient_per_day && body.patient_id) {
+      const n = await TherapySession.countDocuments({ hospital_id: body.hospital_id, patient_id: body.patient_id, status: { $ne: 'cancelled' }, scheduled_at: { $gte: dayStart, $lte: dayEnd } });
+      if (n >= hospital.policies.max_sessions_per_patient_per_day) return res.status(409).json({ message: 'Daily patient session cap reached' });
+    }
+    if (hospital?.policies?.max_sessions_per_staff_per_day && body.assigned_staff_id) {
+      const n = await TherapySession.countDocuments({ hospital_id: body.hospital_id, assigned_staff_id: body.assigned_staff_id, status: { $ne: 'cancelled' }, scheduled_at: { $gte: dayStart, $lte: dayEnd } });
+      if (n >= hospital.policies.max_sessions_per_staff_per_day) return res.status(409).json({ message: 'Daily staff session cap reached' });
+    }
+    if (hospital?.policies?.auto_assign_staff && !body.assigned_staff_id) {
+      const dayStart = new Date(start); dayStart.setHours(0,0,0,0);
+      const dayEnd = new Date(start); dayEnd.setHours(23,59,59,999);
+      const therapists = await User.find({ hospital_id: body.hospital_id, role: 'therapist' }).select('_id');
+      if (therapists.length) {
+        const loads = await Promise.all(therapists.map(async (t) => ({
+          id: t._id,
+          count: await TherapySession.countDocuments({ hospital_id: body.hospital_id, assigned_staff_id: t._id, status: { $ne: 'cancelled' }, scheduled_at: { $gte: dayStart, $lte: dayEnd } })
+        })));
+        const chosen = loads.sort((a,b)=>a.count-b.count)[0];
+        if (chosen) body.assigned_staff_id = chosen.id;
+      }
+    }
+    if (body.patient_id) {
+      const sameDay = await TherapySession.find({ hospital_id: body.hospital_id, patient_id: body.patient_id, status: { $ne: 'cancelled' }, scheduled_at: { $gte: dayStart, $lte: dayEnd } }).select('scheduled_at duration_min therapy_type');
+      const overlap = sameDay.some(s => { const sStart=new Date(s.scheduled_at); const sEnd=new Date(sStart.getTime()+((Number(s.duration_min)||60))*60000); return sStart < end && start < sEnd; });
+      if (overlap) return res.status(409).json({ message: 'Patient has overlapping session' });
+    }
+    if (body.assigned_staff_id) {
+      const sameDay = await TherapySession.find({ hospital_id: body.hospital_id, assigned_staff_id: body.assigned_staff_id, status: { $ne: 'cancelled' }, scheduled_at: { $gte: dayStart, $lte: dayEnd } }).select('scheduled_at duration_min');
+      const overlap = sameDay.some(s => { const sStart=new Date(s.scheduled_at); const sEnd=new Date(sStart.getTime()+((Number(s.duration_min)||60))*60000); return sStart < end && start < sEnd; });
+      if (overlap) return res.status(409).json({ message: 'Therapist has overlapping session' });
+    }
     const roomFilter = { status: 'active', hospital_id: body.hospital_id };
 
     async function roomHasCapacity(roomId) {
@@ -153,17 +205,67 @@ export const updateSession = async (req, res) => {
       if (req.body?.approvals?.admin_approved !== undefined) {
         existing.approvals.admin_approved = !!req.body.approvals.admin_approved;
       }
-      if (req.body.scheduled_at) existing.scheduled_at = new Date(req.body.scheduled_at);
-      // therapist_id removed
+      const candidateScheduledAt = req.body.scheduled_at ? new Date(req.body.scheduled_at) : existing.scheduled_at;
+      const candidateDuration = Math.max(10, Number(req.body.duration_min || existing.duration_min) || 60);
+      if (req.body.scheduled_at && isNaN(candidateScheduledAt.getTime())) {
+        return res.status(400).json({ message: 'scheduled_at invalid' });
+      }
+      const hospital = await Hospital.findById(existing.hospital_id);
+      const policies = hospital?.policies || {};
+      const biz = hospital?.business_hours || {};
+      const cfg = (hospital?.therapy_config || {})[String((req.body.therapy_type || existing.therapy_type) || '').toLowerCase()] || {};
+      const bufferMin = Math.max(0, Number(cfg.buffer_min) || 0);
+      if ((req.body.scheduled_at || req.body.duration_min || req.body.room_id) && (existing.status === 'in_progress' || existing.status === 'completed')) {
+        return res.status(409).json({ message: 'Cannot reschedule this session' });
+      }
+      if (!isSuper(req.user) && req.body.scheduled_at) {
+        const leadH = Math.max(0, Number(policies.lead_time_hours) || 0);
+        if (leadH > 0 && candidateScheduledAt.getTime() < Date.now() + leadH*3600000) return res.status(409).json({ message: `Changes must be ${leadH}h in advance` });
+      }
+      const dow = ['sun','mon','tue','wed','thu','fri','sat'][candidateScheduledAt.getDay()];
+      const bh = biz && biz[dow];
+      const toHM = (d) => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      const toMin = (s) => { const [h,m]=String(s||'').split(':'); return (Number(h)||0)*60+(Number(m)||0); };
+      if (req.body.scheduled_at) {
+        if (!bh) return res.status(409).json({ message: 'Clinic closed' });
+        const stM = toMin(toHM(candidateScheduledAt));
+        if (stM < toMin(bh.start) || stM >= toMin(bh.end)) return res.status(409).json({ message: 'Outside business hours' });
+        if (cfg.allowed_hours && (stM < toMin(cfg.allowed_hours.start) || stM >= toMin(cfg.allowed_hours.end))) return res.status(409).json({ message: 'Therapy not allowed at this time' });
+        const dateStr = candidateScheduledAt.toISOString().slice(0,10);
+        if (Array.isArray(hospital?.blackout_dates) && hospital.blackout_dates.includes(dateStr)) return res.status(409).json({ message: 'Clinic holiday' });
+      }
       if (req.body.doctor_id) existing.doctor_id = req.body.doctor_id;
       if (req.body.assigned_staff_id) existing.assigned_staff_id = req.body.assigned_staff_id;
       if (req.body.therapy_type) existing.therapy_type = String(req.body.therapy_type).toLowerCase().trim().replace(/\s+/g, '_');
-      if (req.body.room_id) {
-        // Validate capacity similar to create
-        const duration = Math.max(10, Number(req.body.duration_min || existing.duration_min) || 60);
-        const start = new Date(existing.scheduled_at);
-        const end = new Date(start.getTime() + duration * 60000);
-        const r = await Room.findOne({ _id: req.body.room_id, hospital_id: existing.hospital_id, status: 'active' });
+      // Allow status update by office_executive/super_admin
+      if (typeof req.body.status === 'string') {
+        const allowed = ['scheduled','awaiting_confirmation','in_progress','completed','cancelled','no_show'];
+        if (allowed.includes(req.body.status)) {
+          // Lead-time guard for cancellation
+          if (req.body.status === 'cancelled' && !isSuper(req.user)) {
+            const hospital = await Hospital.findById(existing.hospital_id);
+            const leadH = Math.max(0, Number(hospital?.policies?.lead_time_hours) || 0);
+            if (leadH > 0 && existing.scheduled_at.getTime() < Date.now() + leadH*3600000) {
+              return res.status(409).json({ message: `Cannot cancel within ${leadH}h of start` });
+            }
+          }
+          existing.status = req.body.status;
+          if (existing.status === 'in_progress') {
+            existing.outcomes = existing.outcomes || {};
+            if (!existing.outcomes.started_at) existing.outcomes.started_at = new Date();
+          }
+          if (existing.status === 'completed') {
+            existing.outcomes = existing.outcomes || {};
+            if (!existing.outcomes.completed_at) existing.outcomes.completed_at = new Date();
+          }
+        }
+      }
+      // Determine target room (new or existing) and validate capacity if we reschedule or change room
+      const targetRoomId = req.body.room_id || existing.room_id;
+      if (targetRoomId && (req.body.room_id || req.body.scheduled_at || req.body.duration_min)) {
+        const start = new Date(candidateScheduledAt);
+        const end = new Date(start.getTime() + (candidateDuration + bufferMin) * 60000);
+        const r = await Room.findOne({ _id: targetRoomId, hospital_id: existing.hospital_id, status: 'active' });
         if (!r) return res.status(404).json({ message: 'Room not found' });
         const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, '_');
         if (Array.isArray(r.therapy_types) && r.therapy_types.length) {
@@ -187,8 +289,36 @@ export const updateSession = async (req, res) => {
           return sStart < end && start < sEnd;
         }).length;
         if (overlaps >= capacity) return res.status(409).json({ message: 'Room full for the selected time' });
-        existing.room_id = req.body.room_id;
+        if (req.body.room_id) existing.room_id = req.body.room_id;
       }
+      {
+        const start = new Date(candidateScheduledAt);
+        const end = new Date(start.getTime() + (candidateDuration + bufferMin) * 60000);
+        const dayStart = new Date(start); dayStart.setHours(0,0,0,0);
+        const dayEnd = new Date(start); dayEnd.setHours(23,59,59,999);
+        if (hospital?.policies?.max_sessions_per_patient_per_day && existing.patient_id) {
+          const n = await TherapySession.countDocuments({ hospital_id: existing.hospital_id, _id: { $ne: existing._id }, patient_id: existing.patient_id, status: { $ne: 'cancelled' }, scheduled_at: { $gte: dayStart, $lte: dayEnd } });
+          if (n >= hospital.policies.max_sessions_per_patient_per_day) return res.status(409).json({ message: 'Daily patient session cap reached' });
+        }
+        if (hospital?.policies?.max_sessions_per_staff_per_day && (req.body.assigned_staff_id || existing.assigned_staff_id)) {
+          const staffId = req.body.assigned_staff_id || existing.assigned_staff_id;
+          if (staffId) {
+            const n = await TherapySession.countDocuments({ hospital_id: existing.hospital_id, _id: { $ne: existing._id }, assigned_staff_id: staffId, status: { $ne: 'cancelled' }, scheduled_at: { $gte: dayStart, $lte: dayEnd } });
+            if (n >= hospital.policies.max_sessions_per_staff_per_day) return res.status(409).json({ message: 'Daily staff session cap reached' });
+          }
+        }
+        const sameDayPatient = await TherapySession.find({ hospital_id: existing.hospital_id, _id: { $ne: existing._id }, patient_id: existing.patient_id, status: { $ne: 'cancelled' }, scheduled_at: { $gte: dayStart, $lte: dayEnd } }).select('scheduled_at duration_min');
+        const overlapP = sameDayPatient.some(s => { const sStart=new Date(s.scheduled_at); const sEnd=new Date(sStart.getTime()+((Number(s.duration_min)||60))*60000); return sStart < end && start < sEnd; });
+        if (overlapP) return res.status(409).json({ message: 'Patient has overlapping session' });
+        const staffId = req.body.assigned_staff_id || existing.assigned_staff_id;
+        if (staffId) {
+          const sameDayStaff = await TherapySession.find({ hospital_id: existing.hospital_id, _id: { $ne: existing._id }, assigned_staff_id: staffId, status: { $ne: 'cancelled' }, scheduled_at: { $gte: dayStart, $lte: dayEnd } }).select('scheduled_at duration_min');
+          const overlapS = sameDayStaff.some(s => { const sStart=new Date(s.scheduled_at); const sEnd=new Date(sStart.getTime()+((Number(s.duration_min)||60))*60000); return sStart < end && start < sEnd; });
+          if (overlapS) return res.status(409).json({ message: 'Therapist has overlapping session' });
+        }
+      }
+      if (req.body.scheduled_at) existing.scheduled_at = candidateScheduledAt;
+      if (req.body.duration_min) existing.duration_min = candidateDuration;
     }
     // Doctor can mark completed and add outcomes
     if (isDoctor(req.user)) {
@@ -217,6 +347,11 @@ export const deleteSession = async (req, res) => {
     if (!isSuper(req.user)) {
       if (!req.user.hospital_id || String(req.user.hospital_id) !== String(existing.hospital_id)) {
         return res.status(403).json({ message: 'Forbidden' });
+      }
+      const hospital = await Hospital.findById(existing.hospital_id);
+      const leadH = Math.max(0, Number(hospital?.policies?.lead_time_hours) || 0);
+      if (leadH > 0 && existing.scheduled_at.getTime() < Date.now() + leadH*3600000) {
+        return res.status(409).json({ message: `Cannot delete within ${leadH}h of start` });
       }
     }
     await TherapySession.findByIdAndDelete(id);
