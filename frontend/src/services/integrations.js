@@ -1,32 +1,20 @@
 // Local stubs for integrations to enable offline/local development
 
 async function callGemini(prompt) {
-  const apiKey = import.meta?.env?.VITE_GEMINI_API_KEY;
-  const model = import.meta?.env?.VITE_GEMINI_MODEL || 'gemini-1.5-flash';
-  if (!apiKey) throw new Error('Missing VITE_GEMINI_API_KEY');
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const body = {
-    contents: [
-      {
-        role: 'user',
-        parts: [{ text: String(prompt || '') }]
-      }
-    ]
-  };
-
-  const res = await fetch(url, {
+  // Prefer backend route which uses server-side GEMINI_API_KEY
+  const res = await fetch('/api/ai/gemini', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    credentials: 'include',
+    body: JSON.stringify({ prompt: String(prompt || '') })
   });
   if (!res.ok) {
-    let errText = await res.text().catch(() => '');
-    throw new Error(`Gemini API error ${res.status}: ${errText}`);
+    const errText = await res.text().catch(() => '');
+    throw new Error(`AI backend error ${res.status}: ${errText}`);
   }
   const data = await res.json();
-  const text = data?.candidates?.[0]?.content?.parts?.map(p => p.text).join('\n').trim();
-  if (!text) throw new Error('Gemini API returned empty response');
+  const text = (data && data.text) || '';
+  if (!text) throw new Error('AI backend returned empty response');
   return text;
 }
 

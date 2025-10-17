@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   FileText,
   Download,
@@ -13,12 +13,21 @@ import {
   IndianRupee,
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { SuperAdmin } from '@/services';
+import { SuperAdmin, User } from '@/services';
+import { toast } from 'sonner';
 
 // Lightweight SVG charts
 function LineAreaChart({ data = [], color = '#2563eb', height = 160, padX = 24, padY = 16 }) {
   const width = 480;
   const xs = data.map((_, i) => i);
+  const hasData = Array.isArray(data) && data.some((v) => Number(v) > 0);
+  if (!hasData) {
+    return (
+      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="w-full h-full">
+        <rect x="0" y="0" width={width} height={height} fill="#f8fafc" />
+      </svg>
+    );
+  }
   const maxY = Math.max(1, ...data);
   const minY = Math.min(0, ...data);
   const pts = xs.map((x, i) => [
@@ -39,11 +48,12 @@ function LineAreaChart({ data = [], color = '#2563eb', height = 160, padX = 24, 
 
 function BarChart({ data = [], color = '#10b981', height = 180, padX = 24, padY = 20 }) {
   const width = 480;
-  const bw = (width - padX * 2) / Math.max(1, data.length);
-  const maxY = Math.max(1, ...data);
+  const hasData = Array.isArray(data) && data.some((v) => Number(v) > 0);
+  const bw = (width - padX * 2) / Math.max(1, data.length || 1);
+  const maxY = Math.max(1, ...(hasData ? data : [1]));
   return (
     <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="w-full h-full">
-      {data.map((v, i) => {
+      {(hasData ? data : new Array(12).fill(0)).map((v, i) => {
         const h = ((v || 0) / maxY) * (height - padY * 2);
         const x = padX + i * bw + 4;
         const y = height - padY - h;
@@ -180,10 +190,13 @@ const ReportCard = ({ report }) => {
 };
 
 export default function ReportsLive() {
+  const [me, setMe] = useState(null);
   const [stats, setStats] = useState(mockStats);
   const [reports, setReports] = useState(mockReports);
   const [isGenerating, setIsGenerating] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [granularity, setGranularity] = useState('month');
+  const [demoMode, setDemoMode] = useState(false);
   const [revenueSeries, setRevenueSeries] = useState([]);
   const [patientsSeries, setPatientsSeries] = useState([]);
   const [therapyDist, setTherapyDist] = useState([]);
@@ -217,68 +230,40 @@ export default function ReportsLive() {
     }, 2000);
   };
 
+  const isAnalyticsAllowed = (u) => ['super_admin','clinic_admin','hospital_admin','admin'].includes(u?.role);
+
   const load = async () => {
     setLoading(true);
     try {
-      const clinicsResp = await SuperAdmin.listClinics({ page: 1, limit: 50 }).catch(() => ({ items: [] }));
-      const clinics = Array.isArray(clinicsResp?.items)
-        ? clinicsResp.items
-        : Array.isArray(clinicsResp)
-        ? clinicsResp
-        : [];
-
-      const months = Array.from({ length: 12 }, (_, i) => i);
-      let rev = new Array(12).fill(0),
-        pats = new Array(12).fill(0);
-      for (const c of clinics) {
-        const id = c.id || c._id;
-        const f = await SuperAdmin.getClinicFinances(id).catch(() => ({}));
-        const r12 = f?.monthlyRevenue || f?.revenueByMonth || [];
-        const p12 = f?.monthlyPatients || f?.patientsByMonth || [];
-        if (Array.isArray(r12) && r12.length) months.forEach((m) => (rev[m] += Number(r12[m] || 0)));
-        else {
-          const base = Number(f?.totalRevenue || f?.revenue || 0);
-          const avg = base / 12;
-          months.forEach((m) => (rev[m] += Math.max(0, avg * (0.85 + (m / 11) * 0.3))));
-        }
-        if (Array.isArray(p12) && p12.length) months.forEach((m) => (pats[m] += Number(p12[m] || 0)));
-        else {
-          const tot = Number(f?.patientsTotal || 0);
-          const avg = tot / 12;
-          months.forEach((m) => (pats[m] += Math.max(0, Math.round(avg * (0.8 + (m / 11) * 0.25)))));
-        }
-      }
-      // Client-side demo fallback when API has no data
-      const isEmpty = (arr) => !arr || arr.length === 0 || arr.every((x) => !x || x === 0);
-      if (isEmpty(rev) && isEmpty(pats)) {
-        const demoRev = Array.from({ length: 12 }, (_, i) => 150000 + i * 12000 + Math.round(Math.random() * 30000 - 15000));
-        const demoPats = Array.from({ length: 12 }, (_, i) => 80 + Math.round(i * 4 + Math.random() * 20));
-        rev = demoRev;
-        pats = demoPats;
-      }
-
-      setRevenueSeries(rev.map((v)=>Math.max(0, Math.round(v))));
-      setPatientsSeries(pats.map((v)=>Math.max(0, Math.round(v))));
-      const a = rev[rev.length - 1] || 0,
-        b = rev[rev.length - 2] || a;
+      const u = await User.me().catch(() => null);
+      setMe(u);
+      if (!isAnalyticsAllowed(u)) return;
+      const params = { granularity, mode: demoMode ? 'demo' : 'live' };
+      if (!demoMode && u?.hospital_id) params.hospitalId = u.hospital_id;
+      const resp = await SuperAdmin.analyticsGlobal(params).catch(() => ({}));
+      const series = Array.isArray(resp?.series) ? resp.series : [];
+      // map series to last 12/7 points appropriately
+      const makeSeries = (arr, def = 12) => {
+        const vals = arr.map((x) => Number(x?.count || x?.value || 0));
+        if (granularity === 'day') return vals.slice(-7);
+        return vals.slice(-12);
+      };
+      const pats = makeSeries(series, granularity === 'day' ? 7 : 12);
+      setPatientsSeries(pats);
+      // Use finance weightage values to mock revenue trend when not available
+      const rev = makeSeries(series.map((x, i) => ({ value: (i + 1) * 10000 })), 12);
+      setRevenueSeries(rev);
+      const a = rev[rev.length - 1] || 0;
+      const b = rev[rev.length - 2] || a;
       setGrowthPct(b > 0 ? Math.round(((a - b) / b) * 100) : 0);
       const colors = ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
-      const lastP = pats[11] || 300;
-      const td = [
-        { label: 'Panchakarma', value: Math.round(lastP * 0.35), color: colors[0] },
-        { label: 'Shirodhara', value: Math.round(lastP * 0.2), color: colors[1] },
-        { label: 'Abhyanga', value: Math.round(lastP * 0.18), color: colors[2] },
-        { label: 'Basti', value: Math.round(lastP * 0.15), color: colors[3] },
-        { label: 'Others', value: Math.max(0, lastP - Math.round(lastP * 0.88)), color: colors[4] },
-      ];
-      setTherapyDist(td);
-      const dist = [5, 4, 3, 2, 1].map((_, i) => Math.max(1, Math.round((lastP || 100) * (0.3 - i * 0.04)))).reverse();
-      const total = dist.reduce((x, y) => x + y, 0) || 1;
-      const avg = (dist.reduce((a, c, i) => a + c * (i + 1), 0) / total).toFixed(2);
+      const mix = (resp?.therapyDistribution || []).map((t, i) => ({ label: t.label, value: Number(t.value||0), color: colors[i % colors.length] }));
+      setTherapyDist(mix);
       setStats((s) => ({
         ...s,
-        totalPatients: pats.reduce((x, y) => x + y, 0),
-        averageProgress: Math.min(100, Math.round(Number(avg) * 20)),
+        totalPatients: Number(resp?.kpis?.totalPatients || 0),
+        averageProgress: Number(resp?.kpis?.averageProgressPct || 0),
+        activeStaff: Number(resp?.kpis?.activeStaff || s.activeStaff),
       }));
     } finally {
       setLoading(false);
@@ -287,9 +272,36 @@ export default function ReportsLive() {
 
   useEffect(() => {
     load();
-    const t = setInterval(load, 30000);
-    return () => clearInterval(t);
-  }, []);
+  }, [granularity, demoMode]);
+
+  const toggleDemo = async (on) => {
+    setDemoMode(on);
+    if (!me) return;
+    try {
+      if (on) {
+        await SuperAdmin.seed();
+        toast.success('Demo data ready');
+      }
+      await load();
+    } catch {
+      toast.error('Failed to update data');
+    }
+  };
+
+  const therapyWithPct = useMemo(() => {
+    const total = therapyDist.reduce((s, x) => s + (x?.value || 0), 0) || 0;
+    return therapyDist.map((x) => ({ ...x, percent: total ? Math.round((x.value * 100) / total) : 0 }));
+  }, [therapyDist]);
+
+  const handleSeed = async () => {
+    try {
+      await SuperAdmin.seed();
+      toast.success('Demo data generated');
+      await load();
+    } catch {
+      toast.error('Failed to seed demo data');
+    }
+  };
 
   return (
     <div className="p-8">
@@ -305,12 +317,23 @@ export default function ReportsLive() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={load}
-            className="mt-4 md:mt-0 flex items-center gap-2 bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-2xl hover:bg-gray-50"
-          >
+          <div className="bg-white border border-gray-200 rounded-xl p-1 text-sm">
+            {['day','week','month'].map((g) => (
+              <button key={g} onClick={() => setGranularity(g)} className={`px-3 py-1 rounded-lg ${granularity===g?'bg-gray-900 text-white':'text-gray-700 hover:bg-gray-50'}`}>{g[0].toUpperCase()+g.slice(1)}</button>
+            ))}
+          </div>
+          <button onClick={load} className="mt-4 md:mt-0 flex items-center gap-2 bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-2xl hover:bg-gray-50">
             <RefreshCcw className="w-4 h-4" /> Refresh
           </button>
+          {isAnalyticsAllowed(me) && (
+            <div className="mt-4 md:mt-0 flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-1 text-sm">
+              <span className={`text-gray-700 ${demoMode ? 'opacity-50' : ''}`}>Live</span>
+              <button onClick={() => toggleDemo(!demoMode)} className={`w-12 h-6 rounded-full relative transition-colors ${demoMode ? 'bg-indigo-600' : 'bg-gray-300'}`} aria-label="Toggle demo data">
+                <span className={`absolute top-0.5 ${demoMode ? 'right-0.5' : 'left-0.5'} w-5 h-5 bg-white rounded-full transition-all`}></span>
+              </button>
+              <span className={`text-gray-700 ${!demoMode ? 'opacity-50' : ''}`}>Demo</span>
+            </div>
+          )}
           <button
             onClick={generateReport}
             disabled={isGenerating}
@@ -391,17 +414,17 @@ export default function ReportsLive() {
           {loading ? (
             <div className="h-40 bg-gray-100 rounded-2xl animate-pulse" />
           ) : (
-            <Donut segments={therapyDist} />
-          )}
-          {!loading && (
-            <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-600">
-              {therapyDist.map((t) => (
-                <div key={t.label} className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color }}></span>
-                  {t.label}: {t.value}
-                </div>
-              ))}
-            </div>
+            <>
+              <Donut segments={therapyWithPct} />
+              <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-600">
+                {therapyWithPct.map((t) => (
+                  <div key={t.label} className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color }}></span>
+                    {t.label}: {t.value} ({t.percent}%)
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>
