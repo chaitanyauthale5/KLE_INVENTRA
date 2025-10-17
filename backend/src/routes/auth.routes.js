@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { body } from 'express-validator';
 import { signin, signup, me, signout } from '../controllers/auth.controller.js';
 import { requireAuth } from '../middleware/auth.js';
+import { sendEmailOtp, verifyEmailOtp } from '../controllers/otp.controller.js';
 
 const router = Router();
 
@@ -34,5 +35,10 @@ router.post('/signup', signupValidators, signup);
 router.post('/signin', signinValidators, signin);
 router.get('/me', requireAuth, me);
 router.post('/signout', signout);
+
+// OTP email routes
+const emailValidators = [body('email').isEmail().withMessage('Valid email required')];
+router.post('/otp/send-email', [...emailValidators, body('purpose').optional().isString()], sendEmailOtp);
+router.post('/otp/verify-email', [...emailValidators, body('code').isLength({ min: 4 })], verifyEmailOtp);
 
 export default router;

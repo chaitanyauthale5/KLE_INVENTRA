@@ -14,6 +14,11 @@ export default function SignUp() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(false);
+  const [emailOtpSent, setEmailOtpSent] = useState(false);
+  const [emailOtp, setEmailOtp] = useState("");
+  const [otpBusy, setOtpBusy] = useState(false);
+  const [otpError, setOtpError] = useState("");
 
 
   const roleToPage = (r = "") => {
@@ -42,6 +47,10 @@ export default function SignUp() {
     }
     if (!email.trim() && !phone.trim()) {
       setError("Please provide at least one contact: mobile number or email.");
+      return;
+    }
+    if (email.trim() && !emailVerified) {
+      setError("Please verify your email using the OTP.");
       return;
     }
     if (password !== confirmPassword) {
@@ -82,6 +91,44 @@ export default function SignUp() {
         setError("Failed to create account. Please try again.");
       }
       setLoading(false);
+    }
+  };
+
+  const requestEmailOtp = async () => {
+    setOtpError("");
+    if (!email || !/\S+@\S+\.\S+/.test(email)) {
+      setOtpError("Enter a valid email first.");
+      return;
+    }
+    try {
+      setOtpBusy(true);
+      await User.requestEmailOtp(email.trim(), 'signup');
+      setEmailOtpSent(true);
+    } catch (e) {
+      setOtpError(e?.details?.message || e?.message || "Failed to send OTP.");
+    } finally {
+      setOtpBusy(false);
+    }
+  };
+
+  const verifyEmailOtp = async () => {
+    setOtpError("");
+    if (!emailOtp.trim()) {
+      setOtpError("Enter the OTP sent to your email.");
+      return;
+    }
+    try {
+      setOtpBusy(true);
+      const ok = await User.verifyEmailOtp(email.trim(), emailOtp.trim(), 'signup');
+      if (ok) {
+        setEmailVerified(true);
+      } else {
+        setOtpError("Invalid OTP.");
+      }
+    } catch (e) {
+      setOtpError(e?.details?.message || e?.message || "Failed to verify OTP.");
+    } finally {
+      setOtpBusy(false);
     }
   };
 
@@ -159,13 +206,47 @@ export default function SignUp() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input
-              type="email"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-            />
+            <div className="flex gap-2">
+              <input
+                type="email"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-70"
+                value={email}
+                onChange={(e) => { setEmail(e.target.value); setEmailVerified(false); }}
+                placeholder="you@example.com"
+                disabled={emailVerified}
+              />
+              <button
+                type="button"
+                onClick={requestEmailOtp}
+                disabled={otpBusy || !email || emailVerified}
+                className="whitespace-nowrap px-3 py-2 rounded-lg border border-green-400 text-green-700 hover:bg-green-50 disabled:opacity-60"
+              >
+                {emailVerified ? 'Verified' : (emailOtpSent ? 'Resend OTP' : 'Verify')}
+              </button>
+            </div>
+            {emailOtpSent && !emailVerified && (
+              <div className="mt-2 flex gap-2">
+                <input
+                  type="text"
+                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={emailOtp}
+                  onChange={(e) => setEmailOtp(e.target.value)}
+                  placeholder="Enter OTP"
+                  maxLength={6}
+                />
+                <button
+                  type="button"
+                  onClick={verifyEmailOtp}
+                  disabled={otpBusy || !emailOtp}
+                  className="px-3 py-2 rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-60"
+                >
+                  {otpBusy ? 'Verifying...' : 'Verify OTP'}
+                </button>
+              </div>
+            )}
+            {otpError && (
+              <p className="text-sm text-red-600 mt-1">{otpError}</p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
