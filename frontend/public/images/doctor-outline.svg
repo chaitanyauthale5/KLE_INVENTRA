@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Doctor outline">
+  <!-- Head -->
+  <circle cx="32" cy="18" r="10" />
+  <!-- Shoulders / coat -->
+  <path d="M14 54c0-12 8-22 18-22s18 10 18 22H14z" />
+  <!-- Lapels -->
+  <path d="M24 42l8 12 8-12" />
+  <!-- Badge -->
+  <rect x="28" y="44" width="8" height="8" rx="1.5" />
+  <path d="M31 45v6M28 48h6" />
+  <!-- Stethoscope outline around neck -->
+  <path d="M22 28c0 5 4 9 10 9s10-4 10-9" />
+  <circle cx="22" cy="28" r="2" fill="white" stroke="none" />
+  <circle cx="42" cy="28" r="2" fill="white" stroke="none" />
+</svg>

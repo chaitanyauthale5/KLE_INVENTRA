@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Doctor illustration">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.85"/>
+    </linearGradient>
+  </defs>
+  <!-- Head -->
+  <circle cx="64" cy="40" r="22" fill="#ffffff"/>
+  <!-- Hair cap -->
+  <path d="M42 38c2-12 12-20 22-20s20 8 22 20c-6-4-14-6-22-6s-16 2-22 6z" fill="#e2e8f0"/>
+  <!-- Body/coat -->
+  <path d="M28 120v-12c0-20 16-36 36-36s36 16 36 36v12H28z" fill="url(#bg)"/>
+  <!-- Neck shadow -->
+  <rect x="56" y="58" width="16" height="10" rx="3" fill="#e2e8f0"/>
+  <!-- Lapels -->
+  <path d="M64 72l-18 24 10 6 8-18 8 18 10-6L64 72z" fill="#e2e8f0"/>
+  <!-- Stethoscope -->
+  <path d="M44 58c0 10 8 18 20 18s20-8 20-18" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="44" cy="58" r="4" fill="#ffffff"/>
+  <circle cx="84" cy="58" r="4" fill="#ffffff"/>
+  <!-- Badge with cross -->
+  <rect x="56" y="88" width="16" height="16" rx="3" fill="#ffffff"/>
+  <path d="M62 90h4v4h4v4h-4v4h-4v-4h-4v-4h4z" fill="#0ea5e9"/>
+</svg>
