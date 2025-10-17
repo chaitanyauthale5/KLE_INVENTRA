@@ -33,20 +33,26 @@ export const createAppointment = async (req, res) => {
       return res.status(400).json({ message: 'Selected user is not a doctor' });
     }
 
-    // Resolve patient id: allow staff to book on behalf of a patient
-    let patient_id = user?._id || req.userId;
+    // Resolve patient id robustly
+    let patient_id = null;
+    // Prefer explicit patient user id
     if (patient_user_id) {
-      // When staff books for a patient, trust provided id
       patient_id = patient_user_id;
     } else if (patient_record_id) {
-      // Resolve user_id from patient record
+      // Fall back to patient record
       try {
         const pRec = await Patient.findById(patient_record_id);
         if (pRec?.user_id) patient_id = pRec.user_id;
         else if (pRec?._id) patient_id = pRec._id; // fallback to patient record id
       } catch {}
+    } else if (user?.role === 'patient') {
+      // If the creator is a patient, they can book for themselves
+      patient_id = user?._id || req.userId;
     }
-    if (!patient_id) return res.status(401).json({ message: 'Unauthorized' });
+    // If creator is staff and no patient was specified, block with clear error
+    if (!patient_id) {
+      return res.status(400).json({ message: 'Patient is required when booking by staff. Provide patient_user_id or patient_record_id.' });
+    }
 
     // Scope: hospital must match staff
     if (String(staff.hospital_id) !== String(hospital._id)) {
@@ -64,25 +70,10 @@ export const createAppointment = async (req, res) => {
       notes: notes || undefined,
     });
 
-    // Ensure there is a Patient record for this user in this hospital
+    // Avoid creating duplicate Patient records. Only update metadata if an existing record is found.
     try {
-      let patient = await Patient.findOne({ user_id: patient_id, hospital_id: hospital._id });
-      if (!patient) {
-        patient = await Patient.create({
-          hospital_id: hospital._id,
-          user_id: patient_id,
-          // Best-effort identity; if creator isn't the patient, try to fetch the patient's user profile
-          name: user?.full_name || user?.name || 'Patient',
-          email: user?.email || undefined,
-          phone: user?.phone || undefined,
-          address: user?.address || undefined,
-          medical_history: undefined,
-          metadata: {
-            assigned_doctor: staff?.full_name || staff?.name || undefined,
-          },
-        });
-      } else {
-        // Update assigned doctor metadata if missing or different
+      const patient = await Patient.findOne({ user_id: patient_id, hospital_id: hospital._id });
+      if (patient) {
         const assignedName = staff?.full_name || staff?.name;
         const meta = patient.metadata || {};
         if (assignedName && meta.assigned_doctor !== assignedName) {
@@ -94,8 +85,8 @@ export const createAppointment = async (req, res) => {
         await patient.save();
       }
     } catch (err) {
-      // Don't block appointment creation if patient upsert fails; just log
-      console.error('patient upsert after appointment failed:', err);
+      // Don't block appointment creation if enrichment fails; just log
+      console.error('patient metadata update after appointment failed:', err);
     }
 
     res.status(201).json({ appointment: appt });

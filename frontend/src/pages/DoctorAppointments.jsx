@@ -131,11 +131,13 @@ function SummaryCard({ title, value, icon, className }) {
 }
 
 function Section({ title, items, empty, patientMap }) {
+  const [showAll, setShowAll] = useState(false);
+  const visible = showAll ? items : items.slice(0, 5);
   return (
     <div className="mb-8">
       <h2 className="text-lg font-semibold text-gray-800 mb-3">{title}</h2>
       <div className="space-y-3">
-        {items.map(a => (
+        {visible.map(a => (
           <div key={a.id} className="bg-white rounded-2xl p-4 border border-gray-100">
             <div className="flex items-center justify-between">
               <div className="font-medium text-gray-900 flex items-center gap-2">
@@ -169,6 +171,17 @@ function Section({ title, items, empty, patientMap }) {
         ))}
         {items.length === 0 && <div className="text-gray-500">{empty}</div>}
       </div>
+      {items.length > 5 && (
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => setShowAll(s => !s)}
+            className="text-sm px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50"
+          >
+            {showAll ? 'Show less' : 'Show more'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

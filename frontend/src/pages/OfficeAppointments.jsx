@@ -8,9 +8,6 @@ export default function OfficeAppointments({ currentUser }) {
   const [doctors, setDoctors] = useState([]);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ patientId: '', doctorId: '', date: '', time: '', duration: 30, notes: '' });
-  const [showAddPatient, setShowAddPatient] = useState(false);
-  const [newPatient, setNewPatient] = useState({ full_name: '', phone: '', gender: '', address: '' });
-  const [creatingPatient, setCreatingPatient] = useState(false);
   const [prescriptions, setPrescriptions] = useState([]);
 
   useEffect(() => { (async () => { if (!me) setMe(await User.me().catch(()=>null)); })(); }, [me]);
@@ -71,31 +68,7 @@ export default function OfficeAppointments({ currentUser }) {
     } finally { setBusy(false); }
   };
 
-  const handleCreatePatient = async (e) => {
-    e?.preventDefault?.();
-    if (!newPatient.full_name) return window.showNotification?.({ type: 'error', title: 'Name required', message: 'Please enter patient name.' });
-    try {
-      setCreatingPatient(true);
-      const payload = {
-        full_name: newPatient.full_name,
-        phone: newPatient.phone,
-        gender: newPatient.gender,
-        address: newPatient.address,
-        ...(form.doctorId ? { doctor_id: form.doctorId } : {}),
-      };
-      const created = await Patient.create(payload);
-      window.showNotification?.({ type: 'success', title: 'Patient added', message: `Created ${created.full_name}` });
-      // Refresh lists
-      const user = me || await User.me().catch(()=>null);
-      const pts = await Patient.filter(user?.hospital_id ? { hospital_id: user.hospital_id } : {});
-      setPatients(pts);
-      setForm(f => ({ ...f, patientId: created.id }));
-      setShowAddPatient(false);
-      setNewPatient({ full_name: '', phone: '', gender: '', address: '' });
-    } catch (err) {
-      window.showNotification?.({ type: 'error', title: 'Create failed', message: err?.message || 'Unable to create patient' });
-    } finally { setCreatingPatient(false); }
-  };
+  // Removed inline new patient creation to avoid duplicates. Use Patient Management to add patients.
 
   return (
     <div className="p-3 md:p-8 space-y-6">
@@ -110,42 +83,6 @@ export default function OfficeAppointments({ currentUser }) {
       </div>
 
       <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-4 md:p-6 shadow-xl border border-white/50">
-        <div className="mb-3">
-          <button type="button" onClick={()=>setShowAddPatient(v=>!v)} className="text-sm px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200">
-            {showAddPatient ? 'Close Add Patient' : 'Add New Patient'}
-          </button>
-        </div>
-        {showAddPatient && (
-          <form onSubmit={handleCreatePatient} className="grid grid-cols-1 md:grid-cols-6 gap-3 mb-4 p-3 border rounded-xl bg-gray-50">
-            <div className="md:col-span-2">
-              <label className="block text-xs text-gray-600 mb-1">Full Name</label>
-              <input type="text" value={newPatient.full_name} onChange={(e)=>setNewPatient(p=>({ ...p, full_name: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" required />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">Phone</label>
-              <input type="tel" value={newPatient.phone} onChange={(e)=>setNewPatient(p=>({ ...p, phone: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">Gender</label>
-              <select value={newPatient.gender} onChange={(e)=>setNewPatient(p=>({ ...p, gender: e.target.value }))} className="w-full px-3 py-2 border rounded-lg">
-                <option value="">Select</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-xs text-gray-600 mb-1">Address</label>
-              <input type="text" value={newPatient.address} onChange={(e)=>setNewPatient(p=>({ ...p, address: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
-            </div>
-            <div className="md:col-span-6 flex justify-end">
-              <button type="submit" disabled={creatingPatient} className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 text-white disabled:opacity-50">
-                {creatingPatient ? 'Creating...' : 'Create Patient'}
-              </button>
-            </div>
-          </form>
-        )}
-
         <form onSubmit={handleBook} className="grid grid-cols-1 md:grid-cols-6 gap-3">
           <div className="md:col-span-2">
             <label className="block text-xs text-gray-600 mb-1">Patient</label>
