@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, Fragment } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ClipboardPlus, Download, FileText, Printer, Search, Trash2 } from 'lucide-react';
 import { User, Patient, Prescription, Hospital } from '@/services';
@@ -486,9 +486,9 @@ export default function PrescriptionRecords() {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {records.map((p)=> (
-                <Fragment key={p.id}>
-                  <tr className="align-top">
+              {records.flatMap((p) => {
+                const summaryRow = (
+                  <tr key={`${p.id}-summary`} className="align-top">
                     <td className="py-2 pr-4">{new Date(p.date || p.created_at || p.createdAt).toLocaleDateString()}</td>
                     <td className="py-2 pr-4">{p.patient_name || 'Patient'}</td>
                     <td className="py-2 pr-4">{p.doctor_name || '-'}</td>
@@ -502,80 +502,81 @@ export default function PrescriptionRecords() {
                       {canWrite && <button className="px-2 py-1 rounded-md border" onClick={()=>deleteEntry(p.id)} title="Delete"><Trash2 className="w-4 h-4"/></button>}
                     </td>
                   </tr>
-                  {expandedId === p.id && (
-                    <tr>
-                      <td colSpan={7} className="py-3 pr-4 bg-gray-50">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div>
-                            <div className="text-xs text-gray-500">Advice / Notes</div>
-                            <div className="whitespace-pre-wrap">{p.advice || '-'}</div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-gray-500">Panchakarma Plan</div>
-                            <div><span className="text-gray-500 text-xs">Procedures:</span> {p.pk_plan?.procedures || '-'}</div>
-                            <div><span className="text-gray-500 text-xs">Oils/Decoctions:</span> {p.pk_plan?.oils || '-'}</div>
-                            <div><span className="text-gray-500 text-xs">Basti/Other:</span> {p.pk_plan?.basti || '-'}</div>
-                            <div><span className="text-gray-500 text-xs">Diet & Lifestyle:</span> {p.pk_plan?.diet || '-'}</div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-gray-500">Clinical</div>
-                            <div><span className="text-gray-500 text-xs">Vitals:</span> BP {p.clinical?.vitals?.bp || '-'}, Pulse {p.clinical?.vitals?.pulse || '-'}, Temp {p.clinical?.vitals?.temp || '-'}, SpO₂ {p.clinical?.vitals?.spo2 || '-'}</div>
-                            <div><span className="text-gray-500 text-xs">Diagnosis:</span> {p.clinical?.diagnosis || '-'}</div>
-                            <div><span className="text-gray-500 text-xs">Subjective:</span> {p.clinical?.subjective || '-'}</div>
-                            <div><span className="text-gray-500 text-xs">Objective:</span> {p.clinical?.objective || '-'}</div>
-                            <div><span className="text-gray-500 text-xs">Assessment:</span> {p.clinical?.assessment || '-'}</div>
-                            <div><span className="text-gray-500 text-xs">Plan:</span> {p.clinical?.plan || '-'}</div>
-                            <div><span className="text-gray-500 text-xs">Follow Up:</span> {p.clinical?.follow_up ? new Date(p.clinical.follow_up).toLocaleDateString() : '-'}</div>
-                            <div><span className="text-gray-500 text-xs">Consent:</span> {p.clinical?.consent ? 'Yes' : 'No'}</div>
+                );
+                const detailRow = expandedId === p.id ? (
+                  <tr key={`${p.id}-detail`}>
+                    <td colSpan={7} className="py-3 pr-4 bg-gray-50">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <div className="text-xs text-gray-500">Advice / Notes</div>
+                          <div className="whitespace-pre-wrap">{p.advice || '-'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Panchakarma Plan</div>
+                          <div><span className="text-gray-500 text-xs">Procedures:</span> {p.pk_plan?.procedures || '-'}</div>
+                          <div><span className="text-gray-500 text-xs">Oils/Decoctions:</span> {p.pk_plan?.oils || '-'}</div>
+                          <div><span className="text-gray-500 text-xs">Basti/Other:</span> {p.pk_plan?.basti || '-'}</div>
+                          <div><span className="text-gray-500 text-xs">Diet & Lifestyle:</span> {p.pk_plan?.diet || '-'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Clinical</div>
+                          <div><span className="text-gray-500 text-xs">Vitals:</span> BP {p.clinical?.vitals?.bp || '-'}, Pulse {p.clinical?.vitals?.pulse || '-'}, Temp {p.clinical?.vitals?.temp || '-'}, SpO₂ {p.clinical?.vitals?.spo2 || '-'}</div>
+                          <div><span className="text-gray-500 text-xs">Diagnosis:</span> {p.clinical?.diagnosis || '-'}</div>
+                          <div><span className="text-gray-500 text-xs">Subjective:</span> {p.clinical?.subjective || '-'}</div>
+                          <div><span className="text-gray-500 text-xs">Objective:</span> {p.clinical?.objective || '-'}</div>
+                          <div><span className="text-gray-500 text-xs">Assessment:</span> {p.clinical?.assessment || '-'}</div>
+                          <div><span className="text-gray-500 text-xs">Plan:</span> {p.clinical?.plan || '-'}</div>
+                          <div><span className="text-gray-500 text-xs">Follow Up:</span> {p.clinical?.follow_up ? new Date(p.clinical.follow_up).toLocaleDateString() : '-'}</div>
+                          <div><span className="text-gray-500 text-xs">Consent:</span> {p.clinical?.consent ? 'Yes' : 'No'}</div>
+                        </div>
+                      </div>
+                      {(p.therapies||[]).length > 0 && (
+                        <div className="mt-3">
+                          <div className="text-xs text-gray-500 mb-1">Therapies</div>
+                          <table className="min-w-full text-xs">
+                            <thead>
+                              <tr className="text-left text-gray-500">
+                                <th className="py-1 pr-2">Therapy</th>
+                                <th className="py-1 pr-2">Duration</th>
+                                <th className="py-1 pr-2">Frequency</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                              {(p.therapies||[]).map((t, i)=> (
+                                <tr key={i}>
+                                  <td className="py-1 pr-2">{t.name || ''}</td>
+                                  <td className="py-1 pr-2">{t.duration || ''}</td>
+                                  <td className="py-1 pr-2">{t.frequency || ''}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {/* Plan details */}
+                          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {(p.therapies||[]).map((t, i)=> (
+                              <div key={`plan-${i}`} className="p-2 bg-white border rounded-lg">
+                                <div className="text-xs font-medium text-gray-700">Plan for {t.name||'therapy'}</div>
+                                <div className="text-[11px] text-gray-600 flex flex-wrap gap-2 mt-1">
+                                  {t.plan_sessions>0 && <span>Sessions: {t.plan_sessions}</span>}
+                                  {t.plan_interval_days>0 && <span>Interval: {t.plan_interval_days}d</span>}
+                                  {t.plan_duration_min>0 && <span>Dur: {t.plan_duration_min}m</span>}
+                                  {t.plan_start_date && <span>Start: {new Date(t.plan_start_date).toLocaleDateString()}</span>}
+                                  {t.plan_preferred_time && <span>Time: {t.plan_preferred_time}</span>}
+                                  {Array.isArray(t.plan_preferred_days)&&t.plan_preferred_days.length>0 && <span>Days: {t.plan_preferred_days.join(',').toUpperCase()}</span>}
+                                  {t.plan_assigned_staff_id && <span>Therapist: {t.plan_assigned_staff_name || t.plan_assigned_staff_id}</span>}
+                                  {t.plan_notes && <span>Notes: {t.plan_notes}</span>}
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                        {(p.therapies||[]).length > 0 && (
-                          <div className="mt-3">
-                            <div className="text-xs text-gray-500 mb-1">Therapies</div>
-                            <table className="min-w-full text-xs">
-                              <thead>
-                                <tr className="text-left text-gray-500">
-                                  <th className="py-1 pr-2">Therapy</th>
-                                  <th className="py-1 pr-2">Duration</th>
-                                  <th className="py-1 pr-2">Frequency</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y">
-                                {(p.therapies||[]).map((t, i)=> (
-                                  <tr key={i}>
-                                    <td className="py-1 pr-2">{t.name || ''}</td>
-                                    <td className="py-1 pr-2">{t.duration || ''}</td>
-                                    <td className="py-1 pr-2">{t.frequency || ''}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                            {/* Plan details */}
-                            <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-                              {(p.therapies||[]).map((t, i)=> (
-                                <div key={`plan-${i}`} className="p-2 bg-white border rounded-lg">
-                                  <div className="text-xs font-medium text-gray-700">Plan for {t.name||'therapy'}</div>
-                                  <div className="text-[11px] text-gray-600 flex flex-wrap gap-2 mt-1">
-                                    {t.plan_sessions>0 && <span>Sessions: {t.plan_sessions}</span>}
-                                    {t.plan_interval_days>0 && <span>Interval: {t.plan_interval_days}d</span>}
-                                    {t.plan_duration_min>0 && <span>Dur: {t.plan_duration_min}m</span>}
-                                    {t.plan_start_date && <span>Start: {new Date(t.plan_start_date).toLocaleDateString()}</span>}
-                                    {t.plan_preferred_time && <span>Time: {t.plan_preferred_time}</span>}
-                                    {Array.isArray(t.plan_preferred_days)&&t.plan_preferred_days.length>0 && <span>Days: {t.plan_preferred_days.join(',').toUpperCase()}</span>}
-                                    {t.plan_assigned_staff_id && <span>Therapist: {t.plan_assigned_staff_name || t.plan_assigned_staff_id}</span>}
-                                    {t.plan_notes && <span>Notes: {t.plan_notes}</span>}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  
-                </Fragment>
-              ))}
-              </tbody>
+                      )}
+                    </td>
+                  </tr>
+                ) : null;
+                return detailRow ? [summaryRow, detailRow] : [summaryRow];
+              })}
+            </tbody>
             </table>
           </div>
         )}
