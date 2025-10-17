@@ -14,6 +14,7 @@ export default function PrescriptionRecords() {
   const [selectedPatientName, setSelectedPatientName] = useState('');
   const [loading, setLoading] = useState(false);
   const [records, setRecords] = useState([]);
+  const [expandedId, setExpandedId] = useState(null);
   const canWrite = role === 'doctor' || role === 'clinic_admin' || role === 'super_admin' || role === 'office_executive';
 
   // form state (includes Panchakarma-specific fields)
@@ -182,6 +183,14 @@ export default function PrescriptionRecords() {
 
   const handleSave = async () => {
     if (!selectedPatientId) { window.showNotification?.({ type: 'error', title: 'Prescription', message: 'Select a patient first.' }); return; }
+    // Basic client-side validation to prevent bad requests
+    if (form?.clinical?.follow_up) {
+      const re = /^\d{4}-\d{2}-\d{2}$/;
+      if (!re.test(form.clinical.follow_up)) {
+        window.showNotification?.({ type: 'error', title: 'Prescription', message: 'Follow Up date must be in YYYY-MM-DD format.' });
+        return;
+      }
+    }
     try {
       setLoading(true);
       await Prescription.create({
@@ -190,11 +199,19 @@ export default function PrescriptionRecords() {
         advice: form.advice,
         meds: form.meds,
         therapies: form.therapies,
+        pk_plan: form.pk_plan,
+        clinical: form.clinical,
         patient_id: selectedPatientId,
         patient_name: selectedPatientName,
       });
       window.showNotification?.({ type: 'success', title: 'Prescription', message: 'Saved successfully.' });
-      setForm({ date: new Date().toISOString().slice(0,10), complaints: '', advice: '', meds: [ { name: '', dosage: '', frequency: '', duration: '' } ], therapies: [ { name: '', duration: '', frequency: '' } ] });
+      setForm({
+        date: new Date().toISOString().slice(0,10), complaints: '', advice: '',
+        meds: [ { name: '', dosage: '', frequency: '', duration: '' } ],
+        therapies: [ { name: '', duration: '', frequency: '' } ],
+        pk_plan: { procedures: '', oils: '', basti: '', diet: '' },
+        clinical: { vitals: { bp: '', pulse: '', temp: '', spo2: '' }, diagnosis: '', subjective: '', objective: '', assessment: '', plan: '', follow_up: '', consent: false },
+      });
       const list = await Prescription.list(selectedPatientId ? { patient_id: selectedPatientId } : {});
       setRecords(Array.isArray(list) ? list : []);
     } catch (e) {
@@ -355,6 +372,37 @@ export default function PrescriptionRecords() {
             <label className="text-xs text-gray-500">Advice / Notes</label>
             <textarea rows={3} className="w-full px-3 py-2 border rounded-lg" value={form.advice} onChange={e=>setForm(f=>({...f, advice:e.target.value}))} />
           </div>
+          {/* Panchakarma Plan */}
+          <div className="mt-3">
+            <label className="text-xs text-gray-500">Panchakarma Plan</label>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mt-1">
+              <input className="px-3 py-2 border rounded-lg" placeholder="Procedures (e.g., Abhyanga, Swedana)" value={form.pk_plan.procedures} onChange={e=>setForm(f=>({...f, pk_plan:{...f.pk_plan, procedures:e.target.value}}))} />
+              <input className="px-3 py-2 border rounded-lg" placeholder="Oils/Decoctions" value={form.pk_plan.oils} onChange={e=>setForm(f=>({...f, pk_plan:{...f.pk_plan, oils:e.target.value}}))} />
+              <input className="px-3 py-2 border rounded-lg" placeholder="Basti/Other" value={form.pk_plan.basti} onChange={e=>setForm(f=>({...f, pk_plan:{...f.pk_plan, basti:e.target.value}}))} />
+              <input className="px-3 py-2 border rounded-lg" placeholder="Diet & Lifestyle" value={form.pk_plan.diet} onChange={e=>setForm(f=>({...f, pk_plan:{...f.pk_plan, diet:e.target.value}}))} />
+            </div>
+          </div>
+          {/* Clinical Details */}
+          <div className="mt-3">
+            <label className="text-xs text-gray-500">Clinical</label>
+            <div className="grid grid-cols-2 md:grid-cols-8 gap-2 mt-1">
+              <input className="px-3 py-2 border rounded-lg" placeholder="BP" value={form.clinical.vitals.bp} onChange={e=>setForm(f=>({...f, clinical:{...f.clinical, vitals:{...f.clinical.vitals, bp:e.target.value}}}))} />
+              <input className="px-3 py-2 border rounded-lg" placeholder="Pulse" value={form.clinical.vitals.pulse} onChange={e=>setForm(f=>({...f, clinical:{...f.clinical, vitals:{...f.clinical.vitals, pulse:e.target.value}}}))} />
+              <input className="px-3 py-2 border rounded-lg" placeholder="Temp" value={form.clinical.vitals.temp} onChange={e=>setForm(f=>({...f, clinical:{...f.clinical, vitals:{...f.clinical.vitals, temp:e.target.value}}}))} />
+              <input className="px-3 py-2 border rounded-lg" placeholder="SpO₂" value={form.clinical.vitals.spo2} onChange={e=>setForm(f=>({...f, clinical:{...f.clinical, vitals:{...f.clinical.vitals, spo2:e.target.value}}}))} />
+              <input className="px-3 py-2 border rounded-lg md:col-span-2" placeholder="Diagnosis" value={form.clinical.diagnosis} onChange={e=>setForm(f=>({...f, clinical:{...f.clinical, diagnosis:e.target.value}}))} />
+              <input className="px-3 py-2 border rounded-lg md:col-span-2" placeholder="Follow Up (YYYY-MM-DD)" value={form.clinical.follow_up} onChange={e=>setForm(f=>({...f, clinical:{...f.clinical, follow_up:e.target.value}}))} />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+              <textarea rows={2} className="w-full px-3 py-2 border rounded-lg" placeholder="Subjective" value={form.clinical.subjective} onChange={e=>setForm(f=>({...f, clinical:{...f.clinical, subjective:e.target.value}}))} />
+              <textarea rows={2} className="w-full px-3 py-2 border rounded-lg" placeholder="Objective" value={form.clinical.objective} onChange={e=>setForm(f=>({...f, clinical:{...f.clinical, objective:e.target.value}}))} />
+              <textarea rows={2} className="w-full px-3 py-2 border rounded-lg" placeholder="Assessment" value={form.clinical.assessment} onChange={e=>setForm(f=>({...f, clinical:{...f.clinical, assessment:e.target.value}}))} />
+              <textarea rows={2} className="w-full px-3 py-2 border rounded-lg" placeholder="Plan" value={form.clinical.plan} onChange={e=>setForm(f=>({...f, clinical:{...f.clinical, plan:e.target.value}}))} />
+            </div>
+            <label className="inline-flex items-center gap-2 mt-2 text-sm">
+              <input type="checkbox" className="accent-blue-600" checked={!!form.clinical.consent} onChange={e=>setForm(f=>({...f, clinical:{...f.clinical, consent:e.target.checked}}))} /> Consent obtained
+            </label>
+          </div>
         </div>
       )}
 
@@ -384,19 +432,52 @@ export default function PrescriptionRecords() {
               </thead>
               <tbody className="divide-y">
                 {records.map((p)=> (
-                  <tr key={p.id}>
-                    <td className="py-2 pr-4">{new Date(p.date || p.created_at || p.createdAt).toLocaleDateString()}</td>
-                    <td className="py-2 pr-4">{p.patient_name || 'Patient'}</td>
-                    <td className="py-2 pr-4">{p.doctor_name || '-'}</td>
-                    <td className="py-2 pr-4">{p.complaints || '-'}</td>
-                    <td className="py-2 pr-4">{(p.meds||[]).map(m=>m.name).filter(Boolean).join(', ')}</td>
-                    <td className="py-2 pr-4">{(p.therapies||[]).map(t=>t.name).filter(Boolean).join(', ')}</td>
-                    <td className="py-2 pr-4 flex items-center gap-2">
-                      <button className="px-2 py-1 rounded-md border" onClick={()=>printEntry(p)} title="Print"><Printer className="w-4 h-4"/></button>
-                      <button className="px-2 py-1 rounded-md border" onClick={()=>printEntry(p)} title="Download"><Download className="w-4 h-4"/></button>
-                      {canWrite && <button className="px-2 py-1 rounded-md border" onClick={()=>deleteEntry(p.id)} title="Delete"><Trash2 className="w-4 h-4"/></button>}
-                    </td>
-                  </tr>
+                  <>
+                    <tr key={p.id} className="align-top">
+                      <td className="py-2 pr-4">{new Date(p.date || p.created_at || p.createdAt).toLocaleDateString()}</td>
+                      <td className="py-2 pr-4">{p.patient_name || 'Patient'}</td>
+                      <td className="py-2 pr-4">{p.doctor_name || '-'}</td>
+                      <td className="py-2 pr-4">{p.complaints || '-'}</td>
+                      <td className="py-2 pr-4">{(p.meds||[]).map(m=>m.name).filter(Boolean).join(', ')}</td>
+                      <td className="py-2 pr-4">{(p.therapies||[]).map(t=>t.name).filter(Boolean).join(', ')}</td>
+                      <td className="py-2 pr-4 flex items-center gap-2">
+                        <button className="px-2 py-1 rounded-md border" onClick={()=>setExpandedId(expandedId===p.id?null:p.id)} title="Details">{expandedId===p.id? 'Hide' : 'View'}</button>
+                        <button className="px-2 py-1 rounded-md border" onClick={()=>printEntry(p)} title="Print"><Printer className="w-4 h-4"/></button>
+                        <button className="px-2 py-1 rounded-md border" onClick={()=>printEntry(p)} title="Download"><Download className="w-4 h-4"/></button>
+                        {canWrite && <button className="px-2 py-1 rounded-md border" onClick={()=>deleteEntry(p.id)} title="Delete"><Trash2 className="w-4 h-4"/></button>}
+                      </td>
+                    </tr>
+                    {expandedId === p.id && (
+                      <tr>
+                        <td colSpan={7} className="py-3 pr-4 bg-gray-50">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                              <div className="text-xs text-gray-500">Advice / Notes</div>
+                              <div className="whitespace-pre-wrap">{p.advice || '-'}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-gray-500">Panchakarma Plan</div>
+                              <div><span className="text-gray-500 text-xs">Procedures:</span> {p.pk_plan?.procedures || '-'}</div>
+                              <div><span className="text-gray-500 text-xs">Oils/Decoctions:</span> {p.pk_plan?.oils || '-'}</div>
+                              <div><span className="text-gray-500 text-xs">Basti/Other:</span> {p.pk_plan?.basti || '-'}</div>
+                              <div><span className="text-gray-500 text-xs">Diet & Lifestyle:</span> {p.pk_plan?.diet || '-'}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-gray-500">Clinical</div>
+                              <div><span className="text-gray-500 text-xs">Vitals:</span> BP {p.clinical?.vitals?.bp || '-'}, Pulse {p.clinical?.vitals?.pulse || '-'}, Temp {p.clinical?.vitals?.temp || '-'}, SpO₂ {p.clinical?.vitals?.spo2 || '-'}</div>
+                              <div><span className="text-gray-500 text-xs">Diagnosis:</span> {p.clinical?.diagnosis || '-'}</div>
+                              <div><span className="text-gray-500 text-xs">Subjective:</span> {p.clinical?.subjective || '-'}</div>
+                              <div><span className="text-gray-500 text-xs">Objective:</span> {p.clinical?.objective || '-'}</div>
+                              <div><span className="text-gray-500 text-xs">Assessment:</span> {p.clinical?.assessment || '-'}</div>
+                              <div><span className="text-gray-500 text-xs">Plan:</span> {p.clinical?.plan || '-'}</div>
+                              <div><span className="text-gray-500 text-xs">Follow Up:</span> {p.clinical?.follow_up ? new Date(p.clinical.follow_up).toLocaleDateString() : '-'}</div>
+                              <div><span className="text-gray-500 text-xs">Consent:</span> {p.clinical?.consent ? 'Yes' : 'No'}</div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 ))}
               </tbody>
             </table>
