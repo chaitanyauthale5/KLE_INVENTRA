@@ -318,6 +318,8 @@ PatientsPage.propTypes = {
     );
   }
 
+  const canAddPatient = self?.role !== 'clinic_admin';
+
   return (
     <>
       <div className="p-8">
@@ -331,14 +333,16 @@ PatientsPage.propTypes = {
               <p className="text-gray-500">{filteredPatients.length} patients in your care</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setIsAddPatientModalOpen(true)}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-green-600 text-white font-medium hover:shadow-md"
-            >
-              Add Patient
-            </button>
-          </div>
+          {canAddPatient && (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setIsAddPatientModalOpen(true)}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-green-600 text-white font-medium hover:shadow-md"
+              >
+                Add Patient
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Main content */}
@@ -396,7 +400,7 @@ PatientsPage.propTypes = {
                     ? 'Try adjusting your search or filter criteria.' 
                     : 'Get started by adding your first patient.'}
                 </p>
-                {(!searchTerm && filterStatus === 'all') && (
+                {canAddPatient && (!searchTerm && filterStatus === 'all') && (
                   <button
                     onClick={() => setIsAddPatientModalOpen(true)} // Changed to new state variable
                     className="px-6 py-3 bg-gradient-to-r from-blue-600 to-green-600 text-white rounded-xl font-medium hover:shadow-lg transition-all"
