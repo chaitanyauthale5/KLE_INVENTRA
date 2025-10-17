@@ -254,12 +254,45 @@ export const Patient = {
 export const TherapySession = {
   async list() {
     const data = await api('/api/sessions');
-    return (data?.sessions || []).map(normalizeId);
+    return (data?.sessions || []).map(normalizeId).map((s) => {
+      const at = s.scheduled_at || s.scheduledAt;
+      if (at && (!s.scheduled_date || !s.scheduled_time)) {
+        const d = new Date(at);
+        const to2 = (n) => String(n).padStart(2, '0');
+        const localDate = `${d.getFullYear()}-${to2(d.getMonth()+1)}-${to2(d.getDate())}`;
+        const localTime = `${to2(d.getHours())}:${to2(d.getMinutes())}`;
+        return { ...s, scheduled_date: s.scheduled_date || localDate, scheduled_time: s.scheduled_time || localTime };
+      }
+      return s;
+    });
   },
   async filter(query = {}) {
     const qs = new URLSearchParams(query).toString();
     const data = await api(`/api/sessions${qs ? `?${qs}` : ''}`);
-    return (data?.sessions || []).map(normalizeId);
+    return (data?.sessions || []).map(normalizeId).map((s) => {
+      const at = s.scheduled_at || s.scheduledAt;
+      if (at && (!s.scheduled_date || !s.scheduled_time)) {
+        const d = new Date(at);
+        const to2 = (n) => String(n).padStart(2, '0');
+        const localDate = `${d.getFullYear()}-${to2(d.getMonth()+1)}-${to2(d.getDate())}`;
+        const localTime = `${to2(d.getHours())}:${to2(d.getMinutes())}`;
+        return { ...s, scheduled_date: s.scheduled_date || localDate, scheduled_time: s.scheduled_time || localTime };
+      }
+      return s;
+    });
+  },
+  async create(body) {
+    // Accepts: { hospital_id, patient_id, doctor_id, therapy_type, scheduled_at | (scheduled_date, scheduled_time), duration_min, notes }
+    const data = await api('/api/sessions', { method: 'POST', body });
+    return normalizeId(data?.session || data);
+  },
+  async update(id, body) {
+    const data = await api(`/api/sessions/${id}`, { method: 'PUT', body });
+    return normalizeId(data?.session || data);
+  },
+  async delete(id) {
+    await api(`/api/sessions/${id}`, { method: 'DELETE' });
+    return true;
   },
 };
 
