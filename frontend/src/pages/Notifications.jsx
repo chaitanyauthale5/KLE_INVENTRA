@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Notification, Hospital } from "@/services";
+import { Notification, Hospital, Patient } from "@/services";
 import { User } from "@/services";
 import { Bell, Check, X, AlertTriangle, Calendar, Edit, Shield, Send, Search, Building2 } from "lucide-react";
 import { formatDistanceToNow, isWithinInterval } from "date-fns";
@@ -31,6 +31,9 @@ export default function NotificationsPage() {
     clinicIds: [],
   });
   const [sending, setSending] = useState(false);
+  // doctor compose -> patient
+  const [doctorCompose, setDoctorCompose] = useState({ title: '', message: '', patientId: '' });
+  const [patients, setPatients] = useState([]);
 
   // clinic admin compose -> doctors/office_executives in own clinic
   const [clinicCompose, setClinicCompose] = useState({
@@ -70,6 +73,12 @@ export default function NotificationsPage() {
           setClinicStaff(staff || []);
         }
 
+        // preload patients for doctor and office_executive
+        if ((user.role === 'doctor' || user.role === 'office_executive') && user.hospital_id) {
+          const pts = await Patient.filter({ hospital_id: user.hospital_id }).catch(() => []);
+          setPatients(pts || []);
+        }
+
         // load lists: super_admin => outgoing only
         if (user.role === 'super_admin') {
           const out = await Notification.filter({ sender_id: user.id }, "-created_date", 100).catch(() => []);
@@ -94,6 +103,40 @@ export default function NotificationsPage() {
   const persistDrafts = (arr, userId = me?.id) => {
     setDrafts(arr);
     try { if (userId) localStorage.setItem(`notif_drafts_${userId}`, JSON.stringify(arr)); } catch (e) { console.debug('Failed to persist drafts', e); }
+  };
+
+  const sendDoctorNotification = async () => {
+    if (!doctorCompose.title.trim() || !doctorCompose.message.trim()) {
+      return window.showNotification?.({ type: 'error', title: 'Missing fields', message: 'Title and message are required.' });
+    }
+    if (!doctorCompose.patientId) {
+      return window.showNotification?.({ type: 'error', title: 'No patient selected', message: 'Choose a patient to notify.' });
+    }
+    try {
+      setSending(true);
+      const p = patients.find(x => String(x.id) === String(doctorCompose.patientId));
+      if (!p?.user_id) {
+        return window.showNotification?.({ type: 'error', title: 'Patient has no login', message: 'Selected patient is not linked to a user.' });
+      }
+      await Notification.create({
+        title: doctorCompose.title,
+        message: doctorCompose.message,
+        type: 'general',
+        user_id: p.user_id,
+        hospital_id: me?.hospital_id,
+      });
+      window.showNotification?.({ type: 'success', title: 'Sent', message: 'Notification sent to patient.' });
+      // refresh outgoing list
+      const out = await Notification.filter({ sender_id: me?.id, sent_by_me: 1 }, "-created_date", 100).catch(() => []);
+      setOutgoing(out || []);
+      setActiveTab('outgoing');
+      setDoctorCompose({ title: '', message: '', patientId: '' });
+    } catch (err) {
+      console.error(err);
+      window.showNotification?.({ type: 'error', title: 'Failed to send', message: err?.details?.message || err.message || 'Could not send notification' });
+    } finally {
+      setSending(false);
+    }
   };
   const saveDraft = (kind) => {
     const now = new Date().toISOString();
@@ -201,7 +244,7 @@ export default function NotificationsPage() {
           message: clinicCompose.message,
           type: clinicCompose.type,
           priority: clinicCompose.priority,
-          recipient_id: u.id || u._id,
+          user_id: u.id || u._id,
           hospital_id: me.hospital_id,
         }))
       );
@@ -305,6 +348,31 @@ export default function NotificationsPage() {
         </div>
       )}
 
+      {/* Staff (Doctor/Office Executive) Composer (Outgoing tab) */}
+      {activeTab === 'outgoing' && (me?.role === 'doctor' || me?.role === 'office_executive') && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+          <div className="flex items-center gap-2 mb-4 text-gray-700 font-semibold">
+            <Send className="w-4 h-4" /> Notify Patient
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div className="md:col-span-2">
+              <input value={doctorCompose.title} onChange={(e)=>setDoctorCompose(c=>({...c, title:e.target.value}))} className="w-full border border-gray-200 rounded-xl px-4 py-3" placeholder="Title" />
+            </div>
+            <select value={doctorCompose.patientId} onChange={(e)=>setDoctorCompose(c=>({...c, patientId:e.target.value}))} className="border border-gray-200 rounded-xl px-4 py-3">
+              <option value="">Select Patient</option>
+              {patients.map(p => (
+                <option key={p.id} value={p.id}>{p.full_name || p.name}</option>
+              ))}
+            </select>
+          </div>
+          <textarea value={doctorCompose.message} onChange={(e)=>setDoctorCompose(c=>({...c, message:e.target.value}))} className="w-full border border-gray-200 rounded-xl px-4 py-3 mb-4" rows={3} placeholder="Write your message..." />
+          <div className="flex items-center justify-end gap-3">
+            <button disabled={sending} onClick={sendDoctorNotification} className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-green-600 text-white px-6 py-2 rounded-xl hover:shadow-lg transition-all disabled:opacity-60">
+              <Send className="w-4 h-4" /> {sending ? 'Sending...' : 'Send to Patient'}
+            </button>
+          </div>
+        </div>
+      )}
       {/* Super Admin Composer (Outgoing tab) */}
       {activeTab === 'outgoing' && me?.role === 'super_admin' && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">

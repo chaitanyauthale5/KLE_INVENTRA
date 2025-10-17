@@ -10,12 +10,18 @@ export const listNotifications = async (req, res) => {
       // Outgoing view: list notifications created by current user
       filter = { sender_id: req.user._id };
     } else if (!isSuper(req.user)) {
-      // Incoming view (default): notifications targeted to the user or broadcast to their clinic/global
-      filter.$or = [
-        { user_id: req.user._id },
-        ...(req.user.hospital_id ? [{ hospital_id: req.user.hospital_id }] : []),
-        { hospital_id: null, user_id: null }, // global
-      ];
+      // Incoming view (default):
+      // - Always include user-targeted
+      // - Include clinic broadcasts (hospital_id set, user_id null) ONLY for clinic_admin role
+      // - Include global broadcasts
+      const or = [ { user_id: req.user._id }, { hospital_id: null, user_id: null } ];
+      if (req.user.role === 'clinic_admin' && req.user.hospital_id) {
+        or.push({ hospital_id: req.user.hospital_id, user_id: null });
+      }
+      filter.$or = or;
+    } else {
+      // Super admin incoming view: only notifications explicitly targeted to them
+      filter = { user_id: req.user._id };
     }
     const notifications = await Notification.find(filter).sort({ createdAt: -1 }).limit(200);
     res.json({ notifications });

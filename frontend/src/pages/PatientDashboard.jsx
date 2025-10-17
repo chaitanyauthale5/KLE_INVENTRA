@@ -11,7 +11,7 @@ import ClayCard from "../components/shared/ClayCard";
 import ClayButton from "../components/shared/ClayButton";
 import ProgressCard from "../components/shared/ProgressCard";
 import { Calendar, Activity, Heart, Bell, CheckCircle, Clock, AlertTriangle, FileText } from "lucide-react";
-import { format } from "date-fns";
+import { format, parseISO, isValid } from "date-fns";
 
 export default function PatientDashboard() {
   const navigate = useNavigate();
@@ -82,6 +82,18 @@ export default function PatientDashboard() {
       console.error("Error loading dashboard:", error);
     }
     setIsLoading(false);
+  };
+
+  const safeFormatDate = (value, fmt = 'MMM d') => {
+    if (!value) return 'TBD';
+    let d = value instanceof Date ? value : new Date(value);
+    if (!isValid(d)) {
+      try { d = parseISO(String(value)); } catch { d = null; }
+    }
+    if (d && isValid(d)) {
+      try { return format(d, fmt); } catch { return 'TBD'; }
+    }
+    return 'TBD';
   };
 
   const getStatusColor = (status) => {
@@ -253,7 +265,7 @@ export default function PatientDashboard() {
                           {session.therapy_type.replace('_', ' ')}
                         </p>
                         <p className="text-sm text-gray-500">
-                          {format(new Date(session.scheduled_date), 'MMM d')} at {session.scheduled_time}
+                          {safeFormatDate(session.scheduled_date, 'MMM d')} at {session.scheduled_time || 'TBD'}
                         </p>
                       </div>
                     </div>
@@ -332,7 +344,7 @@ export default function PatientDashboard() {
                           {(p.meds||[]).map(m=>m.name).filter(Boolean).slice(0,3).join(', ')}
                         </p>
                         <p className="text-sm text-gray-500">
-                          {format(new Date(p.created_date), 'MMM d')} 
+                          {safeFormatDate(p.created_date, 'MMM d')} 
                         </p>
                       </div>
                     </div>
