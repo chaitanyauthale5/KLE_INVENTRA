@@ -4,6 +4,7 @@ import { TherapySession } from "@/services";
 import { Patient } from "@/services";
 import { User } from "@/services";
 import { Hospital } from "@/services";
+import { Rooms } from "@/services";
  
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -37,6 +38,7 @@ function TherapyScheduling({ currentUser }) {
   const [schedulingBusy, setSchedulingBusy] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const [rows, setRows] = useState([]);
+  const [roomOptions, setRoomOptions] = useState({}); // key: therapy|date|time|duration -> [{id,name,available_spots}]
 
   // view-only: no calendar view
   // View-only: no scheduling/editing state
@@ -198,7 +200,7 @@ function TherapyScheduling({ currentUser }) {
     })();
   }, [self]);
 
-  const canSchedule = (self?.role === 'clinic_admin' || self?.role === 'office_executive' || self?.role === 'super_admin');
+  const canSchedule = (self?.role === 'office_executive' || self?.role === 'super_admin');
 
   const addRow = () => {
     setRows(r => ([
@@ -210,6 +212,7 @@ function TherapyScheduling({ currentUser }) {
         therapyOther: planForm.therapyOther || '',
         duration: planForm.duration || 60,
         staffId: planForm.staffId || '',
+        roomId: '',
       }
     ]));
   };
@@ -222,7 +225,22 @@ function TherapyScheduling({ currentUser }) {
     setRows(prev => prev.filter((_, i) => i !== idx));
   };
 
-  const handleGeneratePreview = () => {
+  const keyFor = (therapy, date, time, duration) => `${therapy}|${date}|${time}|${duration}`;
+  const fetchAvailability = async (therapy, date, time, duration) => {
+    const tType = String(therapy || '').toLowerCase().trim().replace(/\s+/g, '_');
+    const key = keyFor(tType, date, time, duration);
+    if (roomOptions[key]) return roomOptions[key];
+    if (!date || !time) return [];
+    try {
+      const rooms = await Rooms.availability({ therapy_type: tType, date, time, duration_min: duration });
+      setRoomOptions(prev => ({ ...prev, [key]: rooms }));
+      return rooms;
+    } catch {
+      return [];
+    }
+  };
+
+  const handleGeneratePreview = async () => {
     const { patientId, therapyType, therapyOther, count, startDate, time, intervalDays, duration, staffId, notes } = planForm;
     if (!patientId) {
       return window.showNotification?.({ type: 'error', title: 'Missing patient', message: 'Select a patient.' });
@@ -250,6 +268,16 @@ function TherapyScheduling({ currentUser }) {
         }
         const tType = r.therapyType === 'other' ? r.therapyOther.toLowerCase().trim().replace(/\s+/g, '_') : r.therapyType;
         const iso = new Date(`${r.date}T${r.time}:00`).toISOString();
+        // load availability and pick a room (user may override by row.roomId)
+        let assignedRoom = null;
+        const avail = await fetchAvailability(tType, r.date, r.time, r.duration || duration);
+        if (r.roomId) {
+          assignedRoom = avail.find(x => String(x.id) === String(r.roomId)) || null;
+          if (!assignedRoom) {
+            window.showNotification?.({ type: 'warning', title: `Row ${i+1}`, message: 'Selected room not available; auto-assigning.' });
+          }
+        }
+        if (!assignedRoom) assignedRoom = avail.find(x => (x.available_spots || 0) > 0) || null;
         out.push({
           iso,
           date: r.date,
@@ -257,6 +285,8 @@ function TherapyScheduling({ currentUser }) {
           therapy_type: tType,
           duration_min: Number(r.duration || duration) || 60,
           staff_id: r.staffId,
+          room_id: assignedRoom?.id || '',
+          room_name: assignedRoom?.name || 'Auto',
           notes: notes || ''
         });
       }
@@ -282,13 +312,18 @@ function TherapyScheduling({ currentUser }) {
     const out = [];
     let d = new Date(`${startDate}T${time}:00`);
     for (let i = 0; i < n; i++) {
+      const dateStr = d.toISOString().slice(0,10);
+      const avail = await fetchAvailability(selectedType, dateStr, time, duration);
+      const assignedRoom = avail.find(x => (x.available_spots || 0) > 0) || null;
       out.push({
         iso: new Date(d).toISOString(),
-        date: d.toISOString().slice(0,10),
+        date: dateStr,
         time: time,
         therapy_type: selectedType,
         duration_min: Number(duration) || 60,
         staff_id: staffId,
+        room_id: assignedRoom?.id || '',
+        room_name: assignedRoom?.name || 'Auto',
         notes: notes || ''
       });
       d = new Date(d.getTime() + gap * 24 * 3600 * 1000);
@@ -314,6 +349,7 @@ function TherapyScheduling({ currentUser }) {
           scheduled_at: s.iso,
           duration_min: s.duration_min,
           ...(s.staff_id ? { assigned_staff_id: s.staff_id } : {}),
+          ...(s.room_id ? { room_id: s.room_id } : {}),
           notes: s.staff_id ? `${s.notes ? s.notes + ' | ' : ''}Assigned Therapist: ${s.staff_id}` : s.notes
         };
         await TherapySession.create(payload);
@@ -645,6 +681,7 @@ function TherapyScheduling({ currentUser }) {
                     <th className="px-3 py-2 text-left">Date</th>
                     <th className="px-3 py-2 text-left">Time</th>
                     <th className="px-3 py-2 text-left">Duration</th>
+                    <th className="px-3 py-2 text-left">Room</th>
                     <th className="px-3 py-2 text-left">Therapist</th>
                     <th className="px-3 py-2"></th>
                   </tr>
@@ -676,6 +713,25 @@ function TherapyScheduling({ currentUser }) {
                         <input type="number" min="10" step="5" value={r.duration || 60} onChange={(e)=>updateRow(idx,'duration', e.target.value)} className="w-full px-2 py-1 border rounded-md" />
                       </td>
                       <td className="px-3 py-2">
+                        {(() => {
+                          const tType = r.therapyType === 'other' ? (r.therapyOther||'').toLowerCase().trim().replace(/\s+/g,'_') : r.therapyType;
+                          const key = keyFor(tType, r.date, r.time, r.duration || planForm.duration);
+                          const opts = roomOptions[key] || [];
+                          const onLoad = async () => { await fetchAvailability(tType, r.date, r.time, r.duration || planForm.duration); };
+                          return (
+                            <div className="flex items-center gap-2">
+                              <select value={r.roomId || ''} onFocus={onLoad} onChange={(e)=>updateRow(idx,'roomId', e.target.value)} className="w-full px-2 py-1 border rounded-md">
+                                <option value="">Auto</option>
+                                {opts.map(o => (
+                                  <option key={o.id} value={o.id}>{o.name} {typeof o.available_spots==='number' ? `(${o.available_spots})` : ''}</option>
+                                ))}
+                              </select>
+                              <button type="button" onClick={onLoad} className="px-2 py-1 border rounded">Check</button>
+                            </div>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-3 py-2">
                         <select value={r.staffId || ''} onChange={(e)=>updateRow(idx,'staffId', e.target.value)} className="w-full px-2 py-1 border rounded-md">
                           <option value="">Select therapist</option>
                           {therapists.map(s => (<option key={s.id} value={s.id}>{s.full_name || s.name}</option>))}
@@ -705,6 +761,7 @@ function TherapyScheduling({ currentUser }) {
                     <div className="font-medium capitalize">{p.therapy_type.replace(/_/g,' ')}</div>
                     <div className="text-sm text-gray-600">{new Date(p.iso).toLocaleString()}</div>
                     <div className="text-xs text-gray-500">Duration: {p.duration_min} min</div>
+                    <div className="text-xs text-gray-500">Room: {p.room_name || 'Auto'}</div>
                   </div>
                 ))}
               </div>

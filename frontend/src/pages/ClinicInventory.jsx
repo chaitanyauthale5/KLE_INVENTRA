@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import PropTypes from 'prop-types';
 import { Rooms, Equipments, User } from '@/services';
-import { Building, Wrench, Plus, Trash2, Save, ListChecks } from 'lucide-react';
+import { Building, Wrench, Plus, Trash2, Save, ListChecks, Layers, Package, Info } from 'lucide-react';
 
 export default function ClinicInventory({ currentUser }) {
   const [self, setSelf] = useState(currentUser);
@@ -13,6 +13,12 @@ export default function ClinicInventory({ currentUser }) {
   const [roomForm, setRoomForm] = useState({ name: '', capacity: 1, therapy_types: [], status: 'active', notes: '' });
   const [equipForm, setEquipForm] = useState({ name: '', quantity: 1, status: 'available', notes: '' });
   const [saving, setSaving] = useState(false);
+  const stats = useMemo(() => {
+    const totalCapacity = rooms.reduce((sum, r) => sum + (Number(r.capacity)||0), 0);
+    const activeRooms = rooms.filter(r => (r.status||'').toLowerCase()==='active').length;
+    const totalEquipQty = equipment.reduce((sum, e) => sum + (Number(e.quantity)||0), 0);
+    return { totalRooms: rooms.length, totalCapacity, activeRooms, totalEquip: equipment.length, totalEquipQty };
+  }, [rooms, equipment]);
 
   const canManage = useMemo(() => (self?.role === 'clinic_admin' || self?.role === 'super_admin'), [self]);
 
@@ -132,51 +138,64 @@ export default function ClinicInventory({ currentUser }) {
   }
 
   return (
-    <div className="p-3 md:p-8 space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-blue-500 to-green-500 rounded-2xl flex items-center justify-center shadow-lg">
-          <Building className="w-5 h-5 md:w-6 md:h-6 text-white" />
-        </div>
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Clinic Inventory</h1>
-          <p className="text-gray-500 text-sm">Manage rooms and equipment</p>
+    <div className="p-3 md:p-8 space-y-6 bg-gradient-to-br from-gray-50 to-blue-50/20 min-h-screen">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-indigo-500 to-blue-500 rounded-2xl flex items-center justify-center shadow-lg">
+            <Building className="w-5 h-5 md:w-6 md:h-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-xl md:text-3xl font-bold text-gray-900">Clinic Inventory</h1>
+            <p className="text-gray-500 text-xs md:text-sm">Manage rooms and equipment for smooth therapy scheduling</p>
+          </div>
         </div>
       </div>
 
-      <div className="flex gap-2">
-        <button onClick={()=>setActiveTab('rooms')} className={`px-4 py-2 rounded-xl border ${activeTab==='rooms'?'bg-blue-600 text-white':'bg-white'}`}>Rooms</button>
-        <button onClick={()=>setActiveTab('equipment')} className={`px-4 py-2 rounded-xl border ${activeTab==='equipment'?'bg-blue-600 text-white':'bg-white'}`}>Equipment</button>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-4 border shadow-sm">
+          <div className="flex items-center gap-2 text-gray-500 text-xs"><Layers className="w-4 h-4"/> Rooms</div>
+          <div className="mt-1 text-2xl font-bold text-gray-900">{stats.totalRooms}</div>
+          <div className="text-xs text-gray-500">Active {stats.activeRooms} • Capacity {stats.totalCapacity}</div>
+        </div>
+        <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-4 border shadow-sm">
+          <div className="flex items-center gap-2 text-gray-500 text-xs"><Package className="w-4 h-4"/> Equipment Types</div>
+          <div className="mt-1 text-2xl font-bold text-gray-900">{stats.totalEquip}</div>
+          <div className="text-xs text-gray-500">Total Qty {stats.totalEquipQty}</div>
+        </div>
+      </div>
+
+      <div className="inline-flex p-1 bg-white rounded-2xl shadow border">
+        <button onClick={()=>setActiveTab('rooms')} className={`px-4 py-2 rounded-xl transition ${activeTab==='rooms'?'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow':''}`}>Rooms</button>
+        <button onClick={()=>setActiveTab('equipment')} className={`px-4 py-2 rounded-xl transition ${activeTab==='equipment'?'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow':''}`}>Equipment</button>
       </div>
 
       {activeTab === 'rooms' && (
         <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-4 shadow-xl border">
           {canManage && (
             <div className="grid grid-cols-1 md:grid-cols-6 gap-3 mb-4">
-              <input className="px-3 py-2 border rounded-lg" placeholder="Room name" value={roomForm.name} onChange={(e)=>setRoomForm(f=>({...f, name: e.target.value}))} />
-              <input className="px-3 py-2 border rounded-lg" type="number" min="0" placeholder="Capacity" value={roomForm.capacity} onChange={(e)=>setRoomForm(f=>({...f, capacity: e.target.value}))} />
-              <div className="md:col-span-2 flex items-center gap-3 flex-wrap">
+              <input className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500/30" placeholder="Room name" value={roomForm.name} onChange={(e)=>setRoomForm(f=>({...f, name: e.target.value}))} />
+              <input className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500/30" type="number" min="0" placeholder="Capacity" value={roomForm.capacity} onChange={(e)=>setRoomForm(f=>({...f, capacity: e.target.value}))} />
+              <div className="md:col-span-2 flex items-center gap-2 flex-wrap">
                 {therapyOptions.map(t => (
-                  <label key={t} className="text-xs flex items-center gap-1 border rounded px-2 py-1">
-                    <input type="checkbox" checked={roomForm.therapy_types.includes(t)} onChange={()=>toggleTherapyType(t)} /> {t}
-                  </label>
+                  <button key={t} type="button" onClick={()=>toggleTherapyType(t)} className={`text-xs px-2 py-1 rounded-full border ${roomForm.therapy_types.includes(t)?'bg-blue-600 text-white border-blue-600':'bg-white hover:bg-gray-50'}`}>{t}</button>
                 ))}
               </div>
-              <select className="px-3 py-2 border rounded-lg" value={roomForm.status} onChange={(e)=>setRoomForm(f=>({...f, status: e.target.value}))}>
+              <select className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500/30" value={roomForm.status} onChange={(e)=>setRoomForm(f=>({...f, status: e.target.value}))}>
                 <option value="active">active</option>
                 <option value="inactive">inactive</option>
               </select>
               <div className="md:col-span-5">
-                <input className="w-full px-3 py-2 border rounded-lg" placeholder="Notes" value={roomForm.notes} onChange={(e)=>setRoomForm(f=>({...f, notes: e.target.value}))} />
+                <input className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500/30" placeholder="Notes" value={roomForm.notes} onChange={(e)=>setRoomForm(f=>({...f, notes: e.target.value}))} />
               </div>
               <div className="md:col-span-1 flex justify-end">
-                <button onClick={handleCreateRoom} disabled={saving} className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 text-white disabled:opacity-50 flex items-center gap-2"><Plus className="w-4 h-4"/>Add Room</button>
+                <button onClick={handleCreateRoom} disabled={saving} className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white disabled:opacity-50 flex items-center gap-2"><Plus className="w-4 h-4"/>Add Room</button>
               </div>
             </div>
           )}
 
           <div className="overflow-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
                   <th className="px-3 py-2 text-left">Name</th>
                   <th className="px-3 py-2 text-left">Capacity</th>
@@ -188,7 +207,7 @@ export default function ClinicInventory({ currentUser }) {
               </thead>
               <tbody>
                 {rooms.map(r => (
-                  <tr key={r.id} className="border-t">
+                  <tr key={r.id} className="border-t hover:bg-gray-50/60">
                     <td className="px-3 py-2">
                       {canManage ? (
                         <input className="px-2 py-1 border rounded" value={r.name} onChange={(e)=>setRooms(rs=>rs.map(x=>x.id===r.id?{...x, name:e.target.value}:x))} />
@@ -202,7 +221,13 @@ export default function ClinicInventory({ currentUser }) {
                     <td className="px-3 py-2">
                       {canManage ? (
                         <input className="px-2 py-1 border rounded w-56" value={(r.therapy_types||[]).join(', ')} onChange={(e)=>setRooms(rs=>rs.map(x=>x.id===r.id?{...x, therapy_types:e.target.value.split(',').map(s=>s.trim()).filter(Boolean)}:x))} />
-                      ) : (r.therapy_types||[]).join(', ')}
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {(r.therapy_types||[]).map((t,i)=> (
+                            <span key={i} className="px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-100">{t}</span>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       {canManage ? (
@@ -210,7 +235,9 @@ export default function ClinicInventory({ currentUser }) {
                           <option value="active">active</option>
                           <option value="inactive">inactive</option>
                         </select>
-                      ) : (r.status)}
+                      ) : (
+                        <span className={`px-2 py-0.5 rounded-full text-xs border ${String(r.status).toLowerCase()==='active'?'bg-emerald-50 text-emerald-700 border-emerald-100':'bg-gray-100 text-gray-600 border-gray-200'}`}>{r.status}</span>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       {canManage ? (
@@ -227,7 +254,12 @@ export default function ClinicInventory({ currentUser }) {
                 ))}
                 {rooms.length === 0 && (
                   <tr>
-                    <td colSpan={canManage?6:5} className="px-3 py-4 text-center text-gray-500">No rooms found</td>
+                    <td colSpan={canManage?6:5} className="px-3 py-8">
+                      <div className="h-full w-full flex flex-col items-center justify-center text-gray-500">
+                        <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-2"><Info className="w-5 h-5"/></div>
+                        <div className="text-sm">No rooms found</div>
+                      </div>
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -240,23 +272,23 @@ export default function ClinicInventory({ currentUser }) {
         <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-4 shadow-xl border">
           {canManage && (
             <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">
-              <input className="px-3 py-2 border rounded-lg" placeholder="Equipment name" value={equipForm.name} onChange={(e)=>setEquipForm(f=>({...f, name: e.target.value}))} />
-              <input className="px-3 py-2 border rounded-lg" type="number" min="0" placeholder="Quantity" value={equipForm.quantity} onChange={(e)=>setEquipForm(f=>({...f, quantity: e.target.value}))} />
-              <select className="px-3 py-2 border rounded-lg" value={equipForm.status} onChange={(e)=>setEquipForm(f=>({...f, status: e.target.value}))}>
+              <input className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500/30" placeholder="Equipment name" value={equipForm.name} onChange={(e)=>setEquipForm(f=>({...f, name: e.target.value}))} />
+              <input className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500/30" type="number" min="0" placeholder="Quantity" value={equipForm.quantity} onChange={(e)=>setEquipForm(f=>({...f, quantity: e.target.value}))} />
+              <select className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500/30" value={equipForm.status} onChange={(e)=>setEquipForm(f=>({...f, status: e.target.value}))}>
                 <option value="available">available</option>
                 <option value="unavailable">unavailable</option>
                 <option value="maintenance">maintenance</option>
               </select>
-              <input className="px-3 py-2 border rounded-lg" placeholder="Notes" value={equipForm.notes} onChange={(e)=>setEquipForm(f=>({...f, notes: e.target.value}))} />
+              <input className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500/30" placeholder="Notes" value={equipForm.notes} onChange={(e)=>setEquipForm(f=>({...f, notes: e.target.value}))} />
               <div className="flex justify-end">
-                <button onClick={handleCreateEquip} disabled={saving} className="px-4 py-2 rounded-lg bg-gradient-to-r from-indigo-600 to-blue-600 text-white disabled:opacity-50 flex items-center gap-2"><Plus className="w-4 h-4"/>Add</button>
+                <button onClick={handleCreateEquip} disabled={saving} className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white disabled:opacity-50 flex items-center gap-2"><Plus className="w-4 h-4"/>Add</button>
               </div>
             </div>
           )}
 
           <div className="overflow-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
                   <th className="px-3 py-2 text-left">Name</th>
                   <th className="px-3 py-2 text-left">Qty</th>
@@ -267,7 +299,7 @@ export default function ClinicInventory({ currentUser }) {
               </thead>
               <tbody>
                 {equipment.map(eq => (
-                  <tr key={eq.id} className="border-t">
+                  <tr key={eq.id} className="border-t hover:bg-gray-50/60">
                     <td className="px-3 py-2">{canManage ? <input className="px-2 py-1 border rounded" value={eq.name} onChange={(e)=>setEquipment(es=>es.map(x=>x.id===eq.id?{...x, name:e.target.value}:x))} /> : eq.name}</td>
                     <td className="px-3 py-2">{canManage ? <input type="number" min="0" className="px-2 py-1 border rounded w-24" value={eq.quantity||0} onChange={(e)=>setEquipment(es=>es.map(x=>x.id===eq.id?{...x, quantity:e.target.value}:x))} /> : (eq.quantity||0)}</td>
                     <td className="px-3 py-2">{canManage ? (
@@ -276,7 +308,9 @@ export default function ClinicInventory({ currentUser }) {
                         <option value="unavailable">unavailable</option>
                         <option value="maintenance">maintenance</option>
                       </select>
-                    ) : eq.status}</td>
+                    ) : (
+                      <span className={`px-2 py-0.5 rounded-full text-xs border ${String(eq.status).toLowerCase()==='available'?'bg-emerald-50 text-emerald-700 border-emerald-100':String(eq.status).toLowerCase()==='maintenance'?'bg-amber-50 text-amber-700 border-amber-100':'bg-gray-100 text-gray-600 border-gray-200'}`}>{eq.status}</span>
+                    )}</td>
                     <td className="px-3 py-2">{canManage ? <input className="px-2 py-1 border rounded w-full" value={eq.notes||''} onChange={(e)=>setEquipment(es=>es.map(x=>x.id===eq.id?{...x, notes:e.target.value}:x))} /> : (eq.notes||'')}</td>
                     {canManage && (
                       <td className="px-3 py-2 text-right whitespace-nowrap">
@@ -288,7 +322,12 @@ export default function ClinicInventory({ currentUser }) {
                 ))}
                 {equipment.length === 0 && (
                   <tr>
-                    <td colSpan={canManage?5:4} className="px-3 py-4 text-center text-gray-500">No equipment found</td>
+                    <td colSpan={canManage?5:4} className="px-3 py-8">
+                      <div className="h-full w-full flex flex-col items-center justify-center text-gray-500">
+                        <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-2"><Info className="w-5 h-5"/></div>
+                        <div className="text-sm">No equipment found</div>
+                      </div>
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -297,7 +336,7 @@ export default function ClinicInventory({ currentUser }) {
         </div>
       )}
 
-      <div className="text-xs text-gray-500 flex items-center gap-2"><ListChecks className="w-4 h-4"/> Room capacities and supported therapies are now stored. We will read these during scheduling later.</div>
+      <div className="text-xs text-gray-500 flex items-center gap-2"><ListChecks className="w-4 h-4"/> Room capacities and supported therapies are stored and used during scheduling.</div>
     </div>
   );
 }

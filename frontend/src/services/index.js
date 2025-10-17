@@ -105,6 +105,11 @@ export const Rooms = {
     const data = await api(`/api/rooms${qs ? `?${qs}` : ''}`);
     return (data?.rooms || []).map(normalizeId);
   },
+  async availability(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    const data = await api(`/api/rooms/availability${qs ? `?${qs}` : ''}`);
+    return (data?.rooms || []).map(normalizeId);
+  },
   async create(body) {
     const data = await api('/api/rooms', { method: 'POST', body });
     return normalizeId(data?.room || data);
