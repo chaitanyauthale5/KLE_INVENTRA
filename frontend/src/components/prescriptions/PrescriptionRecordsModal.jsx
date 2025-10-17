@@ -1,28 +1,34 @@
 import { useEffect, useMemo, useState } from 'react';
 import PropTypes from 'prop-types';
 import { X, Printer, Download, FileText } from 'lucide-react';
+import { Prescription } from '@/services';
 
-const STORAGE_KEY = 'ayursutra_prescriptions_v1';
-function loadAll() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
-}
+// Load prescriptions for this patient from the backend
 
 export default function PrescriptionRecordsModal({ isOpen, onClose, patient, currentUser }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
 
   useEffect(() => {
     if (!isOpen) return;
-    setLoading(true);
-    try {
-      setItems(loadAll());
-    } finally { setLoading(false); }
-  }, [isOpen]);
+    const run = async () => {
+      setLoading(true);
+      try {
+        const pid = patient?.id || patient?._id;
+        const list = pid ? await Prescription.list({ patient_id: pid }) : [];
+        setItems(Array.isArray(list) ? list : []);
+      } catch (e) {
+        setItems([]);
+      } finally { setLoading(false); }
+    };
+    run();
+  }, [isOpen, patient?.id, patient?._id]);
 
   const scoped = useMemo(() => {
     const pid = patient?.id || patient?._id;
     const hid = currentUser?.hospital_id;
-    return (items || []).filter(r => (!hid || r.hospital_id === hid) && (r.patient_id === pid));
+    return (items || []).filter(r => (!hid || String(r.hospital_id) === String(hid)) && (String(r.patient_id?._id || r.patient_id) === String(pid)));
   }, [items, patient?.id, patient?._id, currentUser?.hospital_id]);
 
   const printEntry = (entry) => {
@@ -41,6 +47,7 @@ export default function PrescriptionRecordsModal({ isOpen, onClose, patient, cur
       <div><strong>Doctor:</strong> ${entry.doctor_name || ''}</div>
       <hr/>
       <div><strong>Complaints:</strong><br/>${(entry.complaints||'').replace(/\n/g,'<br/>')}</div>
+      <div style="margin-top:8px"><strong>Advice:</strong><br/>${(entry.advice||'').replace(/\n/g,'<br/>')}</div>
       <h2 style="margin-top:12px">Panchakarma Plan</h2>
       <div><strong>Procedures:</strong> ${entry.pk_plan?.procedures || ''}</div>
       <div><strong>Oils/Decoctions:</strong> ${entry.pk_plan?.oils || ''}</div>
@@ -49,6 +56,12 @@ export default function PrescriptionRecordsModal({ isOpen, onClose, patient, cur
       <h2 style="margin-top:12px">Clinical Notes</h2>
       <div><strong>Vitals:</strong> BP ${entry.clinical?.vitals?.bp || '-'}, Pulse ${entry.clinical?.vitals?.pulse || '-'}, Temp ${entry.clinical?.vitals?.temp || '-'}, SpO₂ ${entry.clinical?.vitals?.spo2 || '-'}</div>
       <div><strong>Diagnosis:</strong> ${entry.clinical?.diagnosis || ''}</div>
+      <div><strong>Subjective:</strong> ${entry.clinical?.subjective || ''}</div>
+      <div><strong>Objective:</strong> ${entry.clinical?.objective || ''}</div>
+      <div><strong>Assessment:</strong> ${entry.clinical?.assessment || ''}</div>
+      <div><strong>Plan:</strong> ${entry.clinical?.plan || ''}</div>
+      <div><strong>Follow Up:</strong> ${entry.clinical?.follow_up ? new Date(entry.clinical.follow_up).toLocaleDateString() : ''}</div>
+      <div><strong>Consent:</strong> ${entry.clinical?.consent ? 'Yes' : 'No'}</div>
       <table><thead><tr><th>Medicine</th><th>Dosage</th><th>Frequency</th><th>Duration</th></tr></thead>
       <tbody>${(entry.meds||[]).map(m=>`<tr><td>${m.name||''}</td><td>${m.dosage||''}</td><td>${m.frequency||''}</td><td>${m.duration||''}</td></tr>`).join('')}</tbody></table>`);
     w.document.write('</body></html>');
@@ -94,16 +107,72 @@ export default function PrescriptionRecordsModal({ isOpen, onClose, patient, cur
                 </thead>
                 <tbody className="divide-y">
                   {scoped.map((p)=> (
-                    <tr key={p.id}>
-                      <td className="py-2 pr-4">{new Date(p.date || p.created_at).toLocaleDateString()}</td>
-                      <td className="py-2 pr-4">{p.doctor_name || '-'}</td>
-                      <td className="py-2 pr-4">{p.complaints || '-'}</td>
-                      <td className="py-2 pr-4">{(p.meds||[]).map(m=>m.name).filter(Boolean).join(', ')}</td>
-                      <td className="py-2 pr-4 flex items-center gap-2">
-                        <button className="px-2 py-1 rounded-md border" onClick={()=>printEntry(p)} title="Print"><Printer className="w-4 h-4"/></button>
-                        <button className="px-2 py-1 rounded-md border" onClick={()=>printEntry(p)} title="Download"><Download className="w-4 h-4"/></button>
-                      </td>
-                    </tr>
+                    <>
+                      <tr key={p.id} className="align-top">
+                        <td className="py-2 pr-4">{new Date(p.date || p.created_at).toLocaleDateString()}</td>
+                        <td className="py-2 pr-4">{p.doctor_name || '-'}</td>
+                        <td className="py-2 pr-4">{p.complaints || '-'}</td>
+                        <td className="py-2 pr-4">{(p.meds||[]).map(m=>m.name).filter(Boolean).join(', ')}</td>
+                        <td className="py-2 pr-4 flex items-center gap-2">
+                          <button className="px-2 py-1 rounded-md border" onClick={()=>setExpandedId(expandedId===p.id?null:p.id)} title="Details">{expandedId===p.id? 'Hide' : 'View'}</button>
+                          <button className="px-2 py-1 rounded-md border" onClick={()=>printEntry(p)} title="Print"><Printer className="w-4 h-4"/></button>
+                          <button className="px-2 py-1 rounded-md border" onClick={()=>printEntry(p)} title="Download"><Download className="w-4 h-4"/></button>
+                        </td>
+                      </tr>
+                      {expandedId === p.id && (
+                        <tr>
+                          <td colSpan={5} className="py-3 pr-4 bg-gray-50">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <div>
+                                <div className="text-xs text-gray-500">Advice / Notes</div>
+                                <div className="whitespace-pre-wrap">{p.advice || '-'}</div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-gray-500">Panchakarma Plan</div>
+                                <div><span className="text-gray-500 text-xs">Procedures:</span> {p.pk_plan?.procedures || '-'}</div>
+                                <div><span className="text-gray-500 text-xs">Oils/Decoctions:</span> {p.pk_plan?.oils || '-'}</div>
+                                <div><span className="text-gray-500 text-xs">Basti/Other:</span> {p.pk_plan?.basti || '-'}</div>
+                                <div><span className="text-gray-500 text-xs">Diet & Lifestyle:</span> {p.pk_plan?.diet || '-'}</div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-gray-500">Clinical</div>
+                                <div><span className="text-gray-500 text-xs">Vitals:</span> BP {p.clinical?.vitals?.bp || '-'}, Pulse {p.clinical?.vitals?.pulse || '-'}, Temp {p.clinical?.vitals?.temp || '-'}, SpO₂ {p.clinical?.vitals?.spo2 || '-'}</div>
+                                <div><span className="text-gray-500 text-xs">Diagnosis:</span> {p.clinical?.diagnosis || '-'}</div>
+                                <div><span className="text-gray-500 text-xs">Subjective:</span> {p.clinical?.subjective || '-'}</div>
+                                <div><span className="text-gray-500 text-xs">Objective:</span> {p.clinical?.objective || '-'}</div>
+                                <div><span className="text-gray-500 text-xs">Assessment:</span> {p.clinical?.assessment || '-'}</div>
+                                <div><span className="text-gray-500 text-xs">Plan:</span> {p.clinical?.plan || '-'}</div>
+                                <div><span className="text-gray-500 text-xs">Follow Up:</span> {p.clinical?.follow_up ? new Date(p.clinical.follow_up).toLocaleDateString() : '-'}</div>
+                                <div><span className="text-gray-500 text-xs">Consent:</span> {p.clinical?.consent ? 'Yes' : 'No'}</div>
+                              </div>
+                            </div>
+                            {(p.therapies||[]).length > 0 && (
+                              <div className="mt-3">
+                                <div className="text-xs text-gray-500 mb-1">Therapies</div>
+                                <table className="min-w-full text-xs">
+                                  <thead>
+                                    <tr className="text-left text-gray-500">
+                                      <th className="py-1 pr-2">Therapy</th>
+                                      <th className="py-1 pr-2">Duration</th>
+                                      <th className="py-1 pr-2">Frequency</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y">
+                                    {(p.therapies||[]).map((t, i)=> (
+                                      <tr key={i}>
+                                        <td className="py-1 pr-2">{t.name || ''}</td>
+                                        <td className="py-1 pr-2">{t.duration || ''}</td>
+                                        <td className="py-1 pr-2">{t.frequency || ''}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   ))}
                 </tbody>
               </table>
