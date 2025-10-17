@@ -39,6 +39,8 @@ import DoctorAppointments from "./DoctorAppointments";
 import PatientAnalytics from "./PatientAnalytics";
 import PatientPlan from "./PatientPlan";
 import PatientSchedule from "./PatientSchedule";
+import PatientFeedback from "./PatientFeedback";
+import ClinicFeedbacks from "./ClinicFeedbacks";
 
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 import SignIn from "./SignIn.jsx";
@@ -68,6 +70,8 @@ const PAGES = {
     PatientAnalytics: PatientAnalytics,
     PatientPlan: PatientPlan,
     PatientSchedule: PatientSchedule,
+    PatientFeedback: PatientFeedback,
+    ClinicFeedbacks: ClinicFeedbacks,
     Appointments: PatientAppointments,
     ClinicInventory: ClinicInventory,
 };
@@ -145,6 +149,10 @@ function PagesContent() {
                 <Route path="/PatientPlan" element={<RoleGuard roles={["patient","super_admin"]}> <PatientPlan /> </RoleGuard>} />
                 {/* Patient Schedule */}
                 <Route path="/PatientSchedule" element={<RoleGuard roles={["patient","super_admin"]}> <PatientSchedule /> </RoleGuard>} />
+                {/* Patient Feedback */}
+                <Route path="/PatientFeedback" element={<RoleGuard roles={["patient","super_admin"]}> <PatientFeedback /> </RoleGuard>} />
+                {/* Clinic Admin: View Feedbacks */}
+                <Route path="/ClinicFeedbacks" element={<RoleGuard roles={["clinic_admin","super_admin"]}> <ClinicFeedbacks /> </RoleGuard>} />
                 {/* Doctor/Therapist appointments management */}
                 <Route path="/DoctorAppointments" element={<RoleGuard roles={["doctor","super_admin"]}> <DoctorAppointments /> </RoleGuard>} />
             </Routes>

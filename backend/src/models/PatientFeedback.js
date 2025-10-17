@@ -7,6 +7,9 @@ const patientFeedbackSchema = new mongoose.Schema(
     doctor_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     rating: { type: Number, min: 1, max: 5, required: true, index: true },
     comment: { type: String, trim: true },
+    admin_response: { type: String, trim: true, default: '' },
+    admin_responder_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    admin_responded_at: { type: Date },
     created_at: { type: Date, default: Date.now, index: true },
   },
   { timestamps: true }

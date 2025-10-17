@@ -12,6 +12,7 @@ import reportRoutes from './routes/reports.routes.js';
 import appointmentRoutes from './routes/appointments.routes.js';
 import roomRoutes from './routes/rooms.routes.js';
 import equipmentRoutes from './routes/equipments.routes.js';
+import feedbackRoutes from './routes/feedbacks.routes.js';
 import superAdminRoutes from './routes/superadmin.routes.js';
 import prescriptionRoutes from './routes/prescriptions.routes.js';
 
@@ -81,6 +82,7 @@ app.use('/api/rooms', roomRoutes);
 app.use('/api/equipment', equipmentRoutes);
 app.use('/api/superadmin', superAdminRoutes);
 app.use('/api/prescriptions', prescriptionRoutes);
+app.use('/api/feedbacks', feedbackRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
