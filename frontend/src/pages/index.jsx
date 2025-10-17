@@ -31,6 +31,7 @@ import OfficeExecutiveDashboard from "./OfficeExecutiveDashboard";
 import Hospitals from "./Hospitals";
 import SuperClinics from "./SuperClinics";
 import SuperFinances from "./SuperFinances";
+import ClinicInventory from "./ClinicInventory.jsx";
 
 import PatientProgress from "./PatientProgress";
 import PatientAppointments from "./PatientAppointments";
@@ -72,6 +73,7 @@ const PAGES = {
     PatientFeedback: PatientFeedback,
     ClinicFeedbacks: ClinicFeedbacks,
     Appointments: PatientAppointments,
+    ClinicInventory: ClinicInventory,
 };
 
 function _getCurrentPage(url) {
@@ -128,6 +130,10 @@ function PagesContent() {
                 {/* lowercase alias for role-based redirect */}
                 <Route path="/office_executivedashboard" element={<RoleGuard roles={["office_executive","super_admin"]}> <OfficeExecutiveDashboard /> </RoleGuard>} />
                 <Route path="/superadmindashboard" element={<RoleGuard roles={["super_admin"]}> <SuperAdminDashboard /> </RoleGuard>} />
+
+                {/* Clinic Inventory */}
+                <Route path="/ClinicInventory" element={<RoleGuard roles={["clinic_admin","office_executive","super_admin"]}> <ClinicInventory /> </RoleGuard>} />
+                <Route path="/clinicinventory" element={<RoleGuard roles={["clinic_admin","office_executive","super_admin"]}> <ClinicInventory /> </RoleGuard>} />
 
                 <Route path="/Hospitals" element={<RoleGuard roles={["super_admin","clinic_admin"]}> <Hospitals /> </RoleGuard>} />
                 <Route path="/SuperClinics" element={<RoleGuard roles={["super_admin"]}> <SuperClinics /> </RoleGuard>} />
