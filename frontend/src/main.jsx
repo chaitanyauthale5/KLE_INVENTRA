@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from '@/App.jsx'
 import '@/index.css'
 import { initPush } from '@/firebase/messaging.js'
+import { initSocket } from '@/realtime/socket.js'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
     <App />
@@ -44,3 +45,5 @@ window.addEventListener('error', (e) => {
 
 // Initialize web push after page becomes interactive
 try { initPush(); } catch {}
+// Initialize WebSocket client
+try { initSocket(); } catch {}
