@@ -14,6 +14,7 @@ import {
   Home, Users, Calendar, Bell, BarChart3, FileText, Settings, LogOut, Menu, X, Stethoscope, UserCheck, Activity, ChevronDown, Building, Star
 } from "lucide-react";
 const SUPER_ADMIN_EMAIL = 'op940356622@gmail.com';
+const SHOW_BOTS = false;
 // --- Role-Specific Navigation Menus ---
 const superAdminNavItems = [
   { title: "Dashboard", url: "SuperAdminDashboard", icon: Home },
@@ -58,10 +59,10 @@ const officeExecutiveNavItems = [
   { title: "Office Executive Dashboard", url: "OfficeExecutiveDashboard", icon: Home },
   { title: "Patient Management", url: "Patients", icon: Users },
   { title: "Appointments", url: "OfficeAppointments", icon: Calendar },
+  { title: "Clinic Inventory", url: "ClinicInventory", icon: Building },
   { title: "Therapy Scheduling", url: "TherapyScheduling", icon: Calendar },
   { title: "Finance", url: "FinanceManagement", icon: BarChart3 },
   { title: "Notifications", url: "Notifications", icon: Bell },
-  { title: "Clinic Inventory", url: "ClinicInventory", icon: Building },
 ];
 
 const navMap = {
@@ -719,8 +720,8 @@ export default function Layout({ children }) {
         <AppShell currentUser={currentUser} handleLogout={handleLogout} navigateToLanding={navigateToLanding}>
           {React.cloneElement(children, { currentUser: currentUser })}
         </AppShell>
-        <AIAvatarAssistant currentUser={currentUser} />
-        <AIDoctorBot currentUser={currentUser} />
+        {SHOW_BOTS && <AIAvatarAssistant currentUser={currentUser} />}
+        {SHOW_BOTS && <AIDoctorBot currentUser={currentUser} />}
         <NotificationSystem />
       </>
     );
@@ -729,8 +730,8 @@ export default function Layout({ children }) {
   return (
     <div className="w-full overflow-y-auto">
       <LandingPageComponent onLogin={handleLogin} onNavigateToApp={handleLogin} /> 
-      <AIAvatarAssistant />
-      <AIDoctorBot />
+      {SHOW_BOTS && <AIAvatarAssistant />}
+      {SHOW_BOTS && <AIDoctorBot />}
       <NotificationSystem />
     </div>
   );

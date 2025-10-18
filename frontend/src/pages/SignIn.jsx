@@ -22,6 +22,8 @@ export default function SignIn() {
         return "GuardianDashboard";
       case "office_executive":
         return "OfficeExecutiveDashboard";
+      case "super_admin":
+        return "SuperAdminDashboard";
       case "hospital_admin":
       case "admin":
       default:

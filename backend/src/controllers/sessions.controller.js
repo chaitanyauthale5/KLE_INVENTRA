@@ -2,6 +2,7 @@ import { TherapySession } from '../models/TherapySession.js';
 import { Room } from '../models/Room.js';
 import { Hospital } from '../models/Hospital.js';
 import { User } from '../models/User.js';
+import { emitToHospital } from '../realtime/socket.js';
 
 function isSuper(user) { return user?.role === 'super_admin'; }
 function isHospAdmin(user) {
@@ -19,6 +20,7 @@ function canScheduleRole(user) {
 export const listSessions = async (req, res) => {
   try {
     const filter = {};
+ 
     // Query-based filters
     const q = req.query || {};
     if (q.patient_id) filter.patient_id = q.patient_id;
@@ -97,7 +99,7 @@ export const sessionsSummary = async (req, res) => {
       TherapySession.countDocuments({ ...filter, scheduled_at: { $gte: todayStart, $lte: todayEnd } }),
       TherapySession.countDocuments({ ...filter, scheduled_at: { $gte: weekStart, $lte: weekEnd } }),
       TherapySession.countDocuments({ ...filter, status: 'completed' }),
-      TherapySession.countDocuments({ ...filter, status: { $in: ['scheduled','in_progress'] } }),
+      TherapySession.countDocuments({ ...filter, status: { $in: ['scheduled','in_progress','awaiting_confirmation'] } }),
       TherapySession.countDocuments(filter),
     ]);
 
@@ -233,6 +235,7 @@ export const createSession = async (req, res) => {
     }
 
     const s = await TherapySession.create(body);
+    try { emitToHospital(s.hospital_id, 'session:created', { session: s }); } catch {}
     res.status(201).json({ session: s });
   } catch (e) {
     res.status(400).json({ message: e.message || 'Bad request' });
@@ -387,6 +390,7 @@ export const updateSession = async (req, res) => {
     }
 
     const saved = await existing.save();
+    try { emitToHospital(saved.hospital_id, 'session:updated', { session: saved }); } catch {}
     res.json({ session: saved });
   } catch (e) {
     res.status(400).json({ message: e.message || 'Bad request' });
@@ -410,6 +414,7 @@ export const deleteSession = async (req, res) => {
       }
     }
     await TherapySession.findByIdAndDelete(id);
+    try { emitToHospital(existing.hospital_id, 'session:deleted', { id: existing._id }); } catch {}
     res.json({ message: 'Deleted' });
   } catch (e) {
     res.status(500).json({ message: 'Server error' });

@@ -43,7 +43,8 @@ window.addEventListener('error', (e) => {
   }
 }, true);
 
-// Initialize web push after page becomes interactive
-try { initPush(); } catch {}
+// Initialize web push after page becomes interactive (only if logged in)
+try { if (localStorage.getItem('ayursutra_token')) initPush(); } catch {}
+
 // Initialize WebSocket client
 try { initSocket(); } catch {}

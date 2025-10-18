@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { User } from '@/services';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -10,6 +10,8 @@ import {
 } from 'lucide-react';
 import AIAvatarAssistant from '../avatar/AIAvatarAssistant';
 import AIDoctorBot from '../doctor/AIDoctorBot';
+
+const SHOW_BOTS = false;
 
 // Enhanced floating particles with Ayurvedic elements
 const FloatingParticles = () => {
@@ -1141,8 +1143,8 @@ export default function LandingPageComponent({ onLogin, onNavigateToApp }) {
       </AnimatePresence>
 
       {/* AI Assistants */}
-      <AIAvatarAssistant />
-      <AIDoctorBot />
+      {SHOW_BOTS && <AIAvatarAssistant />}
+      {SHOW_BOTS && <AIDoctorBot />}
     </div>
   );
 }
