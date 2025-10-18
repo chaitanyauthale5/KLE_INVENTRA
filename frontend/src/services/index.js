@@ -17,6 +17,9 @@ try {
   void 0;
 }
 
+// Always remove trailing slashes from API_BASE to avoid //api/... on requests
+try { API_BASE = String(API_BASE || '').replace(/\/+$/, ''); } catch { /* noop */ }
+
 async function api(path, { method = 'GET', body, auth = true } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (auth) {
@@ -28,7 +31,9 @@ async function api(path, { method = 'GET', body, auth = true } = {}) {
       void 0;
     }
   }
-  const res = await fetch(`${API_BASE}${path}`, {
+  // Ensure exactly one slash between base and path
+  const fullPath = `${API_BASE}${path && path.startsWith('/') ? path : `/${path || ''}`}`;
+  const res = await fetch(fullPath, {
     method,
     headers,
     credentials: 'include',
@@ -354,6 +359,7 @@ export const TherapySession = {
       week: Number(data?.week) || 0,
       completed: Number(data?.completed) || 0,
       pending: Number(data?.pending) || 0,
+      total: Number(data?.total) || 0,
     };
   },
   async create(body) {

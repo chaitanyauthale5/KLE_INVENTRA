@@ -48,56 +48,62 @@ export const listSessions = async (req, res) => {
     }
 
     const limit = Math.max(1, Math.min(500, parseInt(q.limit || '200', 10)));
-    const sessions = await TherapySession.find(filter)
+    const docs = await TherapySession.find(filter)
       .sort({ scheduled_at: 1 })
       .limit(limit)
       .select('hospital_id patient_id doctor_id assigned_staff_id therapy_type status scheduled_at duration_min room_id outcomes')
+      .populate({ path: 'patient_id', select: 'name' })
+      .populate({ path: 'room_id', select: 'name' })
       .lean();
+    const sessions = docs.map((d) => {
+      const at = d.scheduled_at ? new Date(d.scheduled_at) : null;
+      const to2 = (n) => String(n).padStart(2, '0');
+      const scheduled_date = at ? `${at.getFullYear()}-${to2(at.getMonth() + 1)}-${to2(at.getDate())}` : null;
+      const scheduled_time = at ? `${to2(at.getHours())}:${to2(at.getMinutes())}` : null;
+      const patient_name = (d.patient_id && typeof d.patient_id === 'object') ? d.patient_id.name : undefined;
+      const room_number = (d.room_id && typeof d.room_id === 'object') ? (d.room_id.name || undefined) : undefined;
+      return {
+        ...d,
+        patient_id: d.patient_id && typeof d.patient_id === 'object' ? d.patient_id._id : d.patient_id,
+        room_id: d.room_id && typeof d.room_id === 'object' ? d.room_id._id : d.room_id,
+        scheduled_date,
+        scheduled_time,
+        patient_name,
+        room_number,
+      };
+    });
     res.json({ sessions });
   } catch (e) {
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-export const summarySessions = async (req, res) => {
+export const sessionsSummary = async (req, res) => {
   try {
     const q = req.query || {};
+    const filter = {};
+    if (q.patient_id) filter.patient_id = q.patient_id;
+    if (q.doctor_id) filter.doctor_id = q.doctor_id;
+    if (!isSuper(req.user)) {
+      if (req.user.hospital_id) filter.hospital_id = req.user.hospital_id;
+      if (isDoctor(req.user)) filter.doctor_id = req.user._id;
+    }
+
     const now = new Date();
-    let rangeStart = null, rangeEnd = null;
-    if (q.from || q.to) {
-      if (q.from) { const f = new Date(q.from); if (!isNaN(f.getTime())) rangeStart = f; }
-      if (q.to) { const t = new Date(q.to); if (!isNaN(t.getTime())) rangeEnd = t; }
-    }
-    if (!rangeStart || !rangeEnd) {
-      const d = new Date(now);
-      const day = (d.getDay() + 6) % 7; // Monday=0
-      const start = new Date(d); start.setDate(d.getDate() - day); start.setHours(0,0,0,0);
-      const end = new Date(start); end.setDate(start.getDate() + 6); end.setHours(23,59,59,999);
-      rangeStart = rangeStart || start;
-      rangeEnd = rangeEnd || end;
-    }
     const todayStart = new Date(now); todayStart.setHours(0,0,0,0);
     const todayEnd = new Date(now); todayEnd.setHours(23,59,59,999);
+    const weekStart = new Date(now); const day=(weekStart.getDay()+6)%7; weekStart.setDate(weekStart.getDate()-day); weekStart.setHours(0,0,0,0);
+    const weekEnd = new Date(weekStart.getTime() + 6*24*3600*1000 + 86399999);
 
-    const base = {};
-    if (!isSuper(req.user)) {
-      if (req.user.hospital_id) base.hospital_id = req.user.hospital_id;
-      if (isDoctor(req.user)) base.doctor_id = req.user._id;
-    }
-    if (q.hospital_id) base.hospital_id = q.hospital_id;
-    if (q.patient_id) base.patient_id = q.patient_id;
-    if (q.doctor_id) base.doctor_id = q.doctor_id;
-
-    const notCancelled = { ...base, status: { $ne: 'cancelled' } };
-
-    const [today, week, completed, pending] = await Promise.all([
-      TherapySession.countDocuments({ ...notCancelled, scheduled_at: { $gte: todayStart, $lte: todayEnd } }),
-      TherapySession.countDocuments({ ...notCancelled, scheduled_at: { $gte: rangeStart, $lte: rangeEnd } }),
-      TherapySession.countDocuments({ ...base, status: 'completed', scheduled_at: { $gte: rangeStart, $lte: rangeEnd } }),
-      TherapySession.countDocuments({ ...base, status: { $in: ['scheduled','in_progress','awaiting_confirmation'] }, scheduled_at: { $gte: rangeStart, $lte: rangeEnd } }),
+    const [today, week, completed, pending, total] = await Promise.all([
+      TherapySession.countDocuments({ ...filter, scheduled_at: { $gte: todayStart, $lte: todayEnd } }),
+      TherapySession.countDocuments({ ...filter, scheduled_at: { $gte: weekStart, $lte: weekEnd } }),
+      TherapySession.countDocuments({ ...filter, status: 'completed' }),
+      TherapySession.countDocuments({ ...filter, status: { $in: ['scheduled','in_progress','awaiting_confirmation'] } }),
+      TherapySession.countDocuments(filter),
     ]);
 
-    res.json({ today, week, completed, pending });
+    res.json({ today, week, completed, pending, total });
   } catch (e) {
     res.status(500).json({ message: 'Server error' });
   }

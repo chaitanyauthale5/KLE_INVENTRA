@@ -50,6 +50,7 @@ function TherapyScheduling({ currentUser }) {
   const [filterDate, setFilterDate] = useState('all'); // all | today | week | upcoming
   const [filterText, setFilterText] = useState('');
   const deferredFilterText = useDeferredValue(filterText);
+  const [summaryCounts, setSummaryCounts] = useState(null);
 
   // view-only: no calendar view
   // View-only: no scheduling/editing state
@@ -112,6 +113,10 @@ function TherapyScheduling({ currentUser }) {
           });
           setPatients(patientsData);
           setSessions(sessionsData);
+          try {
+            const summary = await TherapySession.summary({ patient_id: fallbackId });
+            setSummaryCounts(summary);
+          } catch {}
           setIsLoading(false);
           setStatusMessage(sessionsData.length ? '' : 'No sessions found for your account.');
           return;
@@ -124,6 +129,10 @@ function TherapyScheduling({ currentUser }) {
 
         setPatients(patientsData);
         setSessions(sessionsData);
+        try {
+          const summary = await TherapySession.summary({ patient_id: patientId });
+          setSummaryCounts(summary);
+        } catch {}
         setIsLoading(false);
         setStatusMessage(sessionsData.length ? '' : 'No sessions found for your account.');
         return;
@@ -186,6 +195,27 @@ function TherapyScheduling({ currentUser }) {
 
       setSessions(normalized);
       setPatients(patientsData);
+      // Summary: for most roles, fetch from backend; for guardian, compute from filtered sessions
+      try {
+        if (user.role === 'guardian') {
+          const today = format(new Date(), 'yyyy-MM-dd');
+          const now = new Date();
+          const weekStartL = new Date(now); const day=(weekStartL.getDay()+6)%7; weekStartL.setDate(weekStartL.getDate()-day); weekStartL.setHours(0,0,0,0);
+          const weekEndL = new Date(weekStartL.getTime()+6*24*3600*1000+86399999);
+          let todayCount=0, week=0, completed=0, pending=0, total=normalized.length;
+          for (const s of normalized) {
+            if (s.status === 'completed') completed++;
+            if (s.status === 'scheduled' || s.status === 'in_progress') pending++;
+            if (s.scheduled_date === today) todayCount++;
+            const d = new Date(s.scheduled_date || s.scheduled_at || 0);
+            if (!isNaN(d.getTime()) && d >= weekStartL && d <= weekEndL) week++;
+          }
+          setSummaryCounts({ today: todayCount, week, completed, pending, total });
+        } else {
+          const summary = await TherapySession.summary({});
+          setSummaryCounts(summary);
+        }
+      } catch {}
       setStatusMessage(normalized.length ? '' : 'No sessions found for your account.');
     } catch (error) {
       console.error("Error loading scheduling data:", error);
@@ -665,7 +695,7 @@ function TherapyScheduling({ currentUser }) {
       if (filterDate === 'week' && !(d >= weekStart && d <= weekEnd)) return false;
       if (filterDate === 'upcoming' && d < now) return false;
       if (q) {
-        const pName = (patientNameMap.get(s.patient_id) || '').toLowerCase();
+        const pName = (s.patient_name || patientNameMap.get(s.patient_id) || '').toLowerCase();
         const tName = (s.therapy_type || '').replace(/_/g,' ').toLowerCase();
         if (!pName.includes(q) && !tName.includes(q)) return false;
       }
@@ -673,9 +703,7 @@ function TherapyScheduling({ currentUser }) {
     });
   }, [sessions, filterStatus, filterTherapy, filterDate, deferredFilterText, todayStr, weekStart, weekEnd, patientNameMap]);
 
-  // Group sessions by scheduled_date for compact list (memoized)
-  const sessionsByDate = useMemo(() => {
-    const map = new Map();
+  const topFiveSessions = useMemo(() => {
     const now = new Date();
     const toDateTime = (s) => {
       if (s.scheduled_date) {
@@ -684,10 +712,10 @@ function TherapyScheduling({ currentUser }) {
       }
       return new Date(s.scheduled_at || 0);
     };
-    const sorted = filteredSessions
+    return filteredSessions
       .filter(s => {
         const dt = toDateTime(s);
-        return !isNaN(dt.getTime()) && dt >= now; // upcoming only
+        return !isNaN(dt.getTime()) && dt >= now;
       })
       .sort((a,b) => {
         const ad = new Date(a.scheduled_date || 0).getTime();
@@ -696,55 +724,55 @@ function TherapyScheduling({ currentUser }) {
         return String(a.scheduled_time || '').localeCompare(String(b.scheduled_time || ''));
       })
       .slice(0, 5);
-    for (const s of sorted) {
+  }, [filteredSessions]);
+
+  // Group sessions by scheduled_date for compact list (memoized)
+  const sessionsByDate = useMemo(() => {
+    const map = new Map();
+    for (const s of topFiveSessions) {
       const key = s.scheduled_date || 'Unknown Date';
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(s);
     }
     return map;
-  }, [filteredSessions]);
+  }, [topFiveSessions]);
 
   const sessionCounts = useMemo(() => {
     const today = format(new Date(), 'yyyy-MM-dd');
-    let todayCount = 0, weekCount = 0, completed = 0, pending = 0;
+    let todayCount = 0, week = 0, completed = 0, pending = 0;
     for (const s of sessions) {
       if (s.status === 'completed') completed++;
       if (s.status === 'scheduled' || s.status === 'in_progress') pending++;
       if (s.scheduled_date === today) todayCount++;
       const d = new Date(s.scheduled_date || s.scheduled_at || 0);
-      if (!isNaN(d.getTime()) && d >= weekStart && d <= weekEnd) weekCount++;
+      if (!isNaN(d.getTime()) && d >= weekStart && d <= weekEnd) week++;
     }
-    return { today: todayCount, week: weekCount, completed, pending, total: sessions.length };
+    return { today: todayCount, week, completed, pending, total: sessions.length };
   }, [sessions, weekStart, weekEnd]);
 
   const getSessionsCount = (type) => {
-    if (stat) {
-      if (type === 'today') return stat.today;
-      if (type === 'week') return stat.week;
-      if (type === 'completed') return stat.completed;
-      if (type === 'pending') return stat.pending;
-    }
-    if (type === 'today') return sessionCounts.today;
-    if (type === 'week') return sessionCounts.week;
-    if (type === 'completed') return sessionCounts.completed;
-    if (type === 'pending') return sessionCounts.pending;
-    return sessionCounts.total;
+    const src = (typeof summaryCounts !== 'undefined' && summaryCounts) || (typeof stat !== 'undefined' && stat) || sessionCounts;
+    if (type === 'today') return src.today || 0;
+    if (type === 'week') return src.week || 0;
+    if (type === 'completed') return src.completed || 0;
+    if (type === 'pending') return src.pending || 0;
+    return src.total || 0;
   };
 
   useEffect(() => {
-    const missing = Array.from(new Set((sessions || []).map(s => s.patient_id).filter(Boolean))).filter(id => !patients.some(p => String(p.id) === String(id)));
-    if (missing.length === 0) return;
-    let stop = false;
+    const ids = Array.from(new Set(topFiveSessions.map(s => s.patient_id).filter(id => id && !patientNameMap.has(id))));
+    if (!ids.length) return;
     (async () => {
-      for (const id of missing.slice(0, 25)) {
-        try {
-          const p = await Patient.get(id);
-          if (!stop && p?.id) setPatients(prev => (prev.some(x => String(x.id) === String(p.id)) ? prev : [...prev, p]));
-        } catch {}
-      }
+      const found = await Promise.all(ids.map(id => Patient.get(id).catch(() => null)));
+      const add = found.filter(Boolean);
+      if (!add.length) return;
+      setPatients(prev => {
+        const map = new Map(prev.map(p => [p.id, p]));
+        for (const p of add) map.set(p.id, p);
+        return Array.from(map.values());
+      });
     })();
-    return () => { stop = true; };
-  }, [sessions, patients]);
+  }, [topFiveSessions, patientNameMap]);
 
   // View-only: no schedule/edit/delete handlers
 
@@ -876,7 +904,7 @@ function TherapyScheduling({ currentUser }) {
                 {session.therapy_type.replace(/_/g, ' ')}
               </h4>
             </div>
-            <p className="text-gray-600 text-xs mb-2 truncate">{getPatientName(session.patient_id)}</p>
+            <p className="text-gray-600 text-xs mb-2 truncate">{session.patient_name || getPatientName(session.patient_id)}</p>
             <div className="flex items-center gap-2 text-xs text-gray-500">
               <Clock className="w-3 h-3 flex-shrink-0" />
               <span>{session.scheduled_time}</span>

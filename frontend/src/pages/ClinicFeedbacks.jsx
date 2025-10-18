@@ -75,24 +75,24 @@ export default function ClinicFeedbacks({ currentUser }) {
   };
 
   return (
-    <div className="p-6">
+    <div className="p-6 md:p-8 bg-gradient-to-br from-blue-50 via-green-50 to-purple-50 rounded-2xl">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">Patient Feedback</h2>
           <p className="text-gray-500">Feedback submitted by patients for your clinic.</p>
         </div>
-        <button onClick={load} className="flex items-center gap-2 bg-white border rounded-xl px-4 py-2 hover:bg-gray-50">
+        <button onClick={load} className="flex items-center gap-2 bg-white/80 backdrop-blur-sm border border-white/60 rounded-xl px-4 py-2 hover:bg-white shadow-sm">
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 flex flex-col md:flex-row gap-3 items-stretch">
+      <div className="bg-white/80 backdrop-blur-md rounded-2xl border border-white/60 shadow-md p-4 mb-4 flex flex-col md:flex-row gap-3 items-stretch">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-          <input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Search feedback..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl" />
+          <input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Search feedback..." className="w-full pl-10 pr-4 py-2.5 bg-white/80 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-300" />
         </div>
         <div>
-          <select value={ratingFilter} onChange={(e)=>setRatingFilter(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-2.5">
+          <select value={ratingFilter} onChange={(e)=>setRatingFilter(e.target.value)} className="bg-white/80 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-300">
             <option value="all">All Ratings</option>
             <option value="5">5 stars</option>
             <option value="4+">4+ stars</option>
@@ -105,10 +105,10 @@ export default function ClinicFeedbacks({ currentUser }) {
 
       <div className="space-y-3">
         {loading ? (
-          [...Array(5)].map((_, i) => <div key={i} className="h-20 bg-gray-100 rounded-xl animate-pulse" />)
+          [...Array(5)].map((_, i) => <div key={i} className="h-20 bg-gradient-to-r from-gray-100 to-gray-50 rounded-xl animate-pulse" />)
         ) : filtered.length ? (
           filtered.map((f) => (
-            <div key={f.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+            <div key={f.id} className={`rounded-2xl border shadow ${ (f.rating||0) >= 4 ? 'bg-gradient-to-r from-emerald-50 to-blue-50 border-emerald-100' : 'bg-white/85 backdrop-blur-sm border-white/60'} p-4` }>
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-1 mb-1">
@@ -122,7 +122,7 @@ export default function ClinicFeedbacks({ currentUser }) {
                   </div>
                   {/* Admin response section */}
                   {f.admin_response ? (
-                    <div className="mt-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                    <div className="mt-3 p-3 bg-white/70 backdrop-blur-sm rounded-xl border border-white/60">
                       <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
                         <MessageSquare className="w-3.5 h-3.5" /> Admin response
                       </div>
@@ -136,11 +136,11 @@ export default function ClinicFeedbacks({ currentUser }) {
                             value={responseText}
                             onChange={(e)=>setResponseText(e.target.value)}
                             rows={3}
-                            className="w-full border border-gray-200 rounded-xl px-3 py-2"
+                            className="w-full bg-white/80 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300"
                             placeholder="Write a response to the patient..."
                           />
                           <div className="flex items-center gap-2">
-                            <button disabled={saving || !responseText.trim()} onClick={()=>saveRespond(f.id)} className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl disabled:opacity-60">
+                            <button disabled={saving || !responseText.trim()} onClick={()=>saveRespond(f.id)} className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-green-600 text-white px-4 py-2 rounded-xl disabled:opacity-60">
                               <Send className="w-4 h-4" /> {saving ? 'Saving...' : 'Send Response'}
                             </button>
                             <button disabled={saving} onClick={cancelRespond} className="px-3 py-2 rounded-xl border">Cancel</button>
@@ -159,7 +159,7 @@ export default function ClinicFeedbacks({ currentUser }) {
             </div>
           ))
         ) : (
-          <div className="text-center py-16 bg-white rounded-2xl border border-gray-100">
+          <div className="text-center py-16 bg-white/80 backdrop-blur-sm rounded-2xl border border-white/60">
             <div className="flex items-center justify-center gap-1 mb-2">
               {[...Array(5)].map((_, i) => <Star key={i} className="w-5 h-5 text-gray-300" />)}
             </div>
