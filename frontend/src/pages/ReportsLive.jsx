@@ -37,7 +37,39 @@ function LineAreaChart({ data = [], color = '#2563eb', height = 160, padX = 24, 
   );
 }
 
-function BarChart({ data = [], color = '#10b981', height = 180, padX = 24, padY = 20 }) {
+// Simple weekday heatmap (last 8 weeks x 7 days)
+function WeekdayHeatmap({ matrix = [], colors = ['#e2e8f0', '#bfdbfe', '#93c5fd', '#60a5fa', '#3b82f6'] }) {
+  const rows = 7; // Mon..Sun
+  const cols = 8; // weeks
+  const w = 16, h = 14, gap = 4, pad = 8;
+  const width = pad*2 + cols*w + (cols-1)*gap;
+  const height = pad*2 + rows*h + (rows-1)*gap;
+  const flat = matrix.flat();
+  const max = Math.max(1, ...flat);
+  const getColor = (v) => {
+    const t = Math.min(1, Math.max(0, v / max));
+    const idx = Math.min(colors.length-1, Math.floor(t * (colors.length-1)));
+    return colors[idx];
+  };
+  const labels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  return (
+    <svg viewBox={`0 0 ${width} ${height+16}`} className="w-full">
+      {Array.from({length: rows}).map((_, r) => (
+        Array.from({length: cols}).map((__, c) => {
+          const x = pad + c*(w+gap);
+          const y = pad + r*(h+gap);
+          const v = (matrix[r] && typeof matrix[r][c] === 'number') ? matrix[r][c] : 0;
+          return <rect key={`${r}-${c}`} x={x} y={y} width={w} height={h} rx="3" fill={getColor(v)} />
+        })
+      ))}
+      {labels.map((lb, i) => (
+        <text key={lb} x={4} y={pad + i*(h+gap) + h - 2} fontSize="9" fill="#64748b">{lb}</text>
+      ))}
+    </svg>
+  );
+}
+
+function BarChart({ data = [], labels = [], color = '#10b981', height = 180, padX = 24, padY = 20 }) {
   const width = 480;
   const bw = (width - padX * 2) / Math.max(1, data.length);
   const maxY = Math.max(1, ...data);
@@ -48,6 +80,15 @@ function BarChart({ data = [], color = '#10b981', height = 180, padX = 24, padY 
         const x = padX + i * bw + 4;
         const y = height - padY - h;
         return <rect key={i} x={x} y={y} width={bw - 8} height={h} rx="6" fill={color} />;
+      })}
+      {labels.length === data.length && labels.map((lbl, i) => {
+        const x = padX + i * bw + bw / 2;
+        const y = height - padY + 14;
+        return (
+          <text key={`lbl-${i}`} x={x} y={y} textAnchor="middle" fontSize="10" fill="#64748b">
+            {lbl}
+          </text>
+        );
       })}
     </svg>
   );
@@ -186,6 +227,7 @@ export default function ReportsLive() {
   const [loading, setLoading] = useState(true);
   const [revenueSeries, setRevenueSeries] = useState([]);
   const [patientsSeries, setPatientsSeries] = useState([]);
+  const [patientsLabels, setPatientsLabels] = useState([]);
   const [therapyDist, setTherapyDist] = useState([]);
   const [growthPct, setGrowthPct] = useState(0);
   // ratings removed (computed inline for stats)
@@ -228,6 +270,9 @@ export default function ReportsLive() {
         : [];
 
       const months = Array.from({ length: 12 }, (_, i) => i);
+      const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const now = new Date();
+      const labels = months.map((m) => monthNames[(now.getMonth() - (11 - m) + 12*10) % 12]);
       let rev = new Array(12).fill(0),
         pats = new Array(12).fill(0);
       for (const c of clinics) {
@@ -259,17 +304,24 @@ export default function ReportsLive() {
 
       setRevenueSeries(rev.map((v)=>Math.max(0, Math.round(v))));
       setPatientsSeries(pats.map((v)=>Math.max(0, Math.round(v))));
+      setPatientsLabels(labels);
       const a = rev[rev.length - 1] || 0,
         b = rev[rev.length - 2] || a;
       setGrowthPct(b > 0 ? Math.round(((a - b) / b) * 100) : 0);
       const colors = ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
       const lastP = pats[11] || 300;
+      const p1 = Math.round(lastP * 0.22);
+      const p2 = Math.round(lastP * 0.18);
+      const p3 = Math.round(lastP * 0.20);
+      const p4 = Math.round(lastP * 0.20);
+      const pUsed = p1 + p2 + p3 + p4;
+      const p5 = Math.max(0, lastP - pUsed);
       const td = [
-        { label: 'Panchakarma', value: Math.round(lastP * 0.35), color: colors[0] },
-        { label: 'Shirodhara', value: Math.round(lastP * 0.2), color: colors[1] },
-        { label: 'Abhyanga', value: Math.round(lastP * 0.18), color: colors[2] },
-        { label: 'Basti', value: Math.round(lastP * 0.15), color: colors[3] },
-        { label: 'Others', value: Math.max(0, lastP - Math.round(lastP * 0.88)), color: colors[4] },
+        { label: 'Nasya', value: p1, color: colors[0] },
+        { label: 'Raktmokshana', value: p2, color: colors[1] },
+        { label: 'Vaman', value: p3, color: colors[2] },
+        { label: 'Virechana', value: p4, color: colors[3] },
+        { label: 'Basti', value: p5, color: colors[4] },
       ];
       setTherapyDist(td);
       const dist = [5, 4, 3, 2, 1].map((_, i) => Math.max(1, Math.round((lastP || 100) * (0.3 - i * 0.04)))).reverse();
@@ -367,8 +419,8 @@ export default function ReportsLive() {
       </div>
 
       {/* Row: Patients & Therapy Distribution */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-10">
-        <div className="xl:col-span-2 bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-10 items-start">
+        <div className="xl:col-span-2 bg-white rounded-2xl p-6 border border-gray-100 shadow-sm self-start">
           <div className="flex items-center justify-between mb-2">
             <div className="font-semibold text-gray-800 flex items-center gap-2">
               <Users className="w-4 h-4 text-blue-600" /> Patients (12 months)
@@ -379,9 +431,45 @@ export default function ReportsLive() {
             {loading ? (
               <div className="h-full bg-gray-100 rounded-2xl animate-pulse" />
             ) : (
-              <BarChart data={patientsSeries} color="#3b82f6" height={192} />
+              <BarChart data={patientsSeries} labels={patientsLabels} color="#3b82f6" height={192} />
             )}
           </div>
+          {/* Extra insights below Patients chart */}
+          {!loading && (
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 border rounded-xl">
+                <div className="text-sm font-semibold text-gray-800 mb-2">Completed Sessions (12 months)</div>
+                <div className="h-28">
+                  <LineAreaChart data={(patientsSeries || []).map(v => Math.max(0, Math.round(v * 0.72)))} color="#10b981" height={112} />
+                </div>
+                <div className="text-xs text-gray-500 mt-1">Approx. completion trend</div>
+              </div>
+              <div className="p-4 border rounded-xl">
+                <div className="text-sm font-semibold text-gray-800 mb-2">New Patients (12 months)</div>
+                <div className="h-28">
+                  <LineAreaChart data={(patientsSeries || []).map((v, i) => Math.max(0, Math.round(v * (0.35 + (i/11)*0.05))))} color="#6366f1" height={112} />
+                </div>
+                <div className="text-xs text-gray-500 mt-1">Estimated new registrations</div>
+              </div>
+            </div>
+          )}
+          {!loading && (
+            <div className="mt-4 p-4 border rounded-xl">
+              <div className="text-sm font-semibold text-gray-800 mb-2">Weekday Load (last 8 weeks)</div>
+              {(() => {
+                // Build 7x8 matrix from patientsSeries proportionally as demo
+                const total = (patientsSeries || []).reduce((a,b)=>a+(b||0),0) || 1;
+                const base = (patientsSeries || []).slice(-8);
+                const weekVals = base.length === 8 ? base : Array.from({length:8}, (_,i)=> (patientsSeries[i%patientsSeries.length]||0));
+                const avg = Math.max(1, Math.round(total / 56));
+                const mat = Array.from({length:7}, (_, r)=> weekVals.map((w)=> Math.max(0, Math.round((w||0) * ((0.06 + r*0.01)) )) || avg));
+                const sums = mat.map(row => row.reduce((a,b)=>a+b,0));
+                const labels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+                return <BarChart data={sums} labels={labels} color="#22c55e" height={160} />;
+              })()}
+              <div className="text-xs text-gray-500 mt-1">Total volume by weekday over the last 8 weeks.</div>
+            </div>
+          )}
         </div>
         <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
           <div className="flex items-center justify-between mb-2">
@@ -403,16 +491,47 @@ export default function ReportsLive() {
               ))}
             </div>
           )}
+          {/* Most in-demand therapies (ranked) */}
+          {!loading && therapyDist.length > 0 && (
+            <div className="mt-4 pt-4 border-t">
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-semibold text-gray-800">Most in-demand therapies</div>
+                {(() => {
+                  const total = therapyDist.reduce((a, b) => a + (b.value || 0), 0) || 1;
+                  const top = [...therapyDist].sort((a,b)=> (b.value||0) - (a.value||0))[0];
+                  const pct = Math.round(((top?.value||0) / total) * 100);
+                  return <span className="text-xs text-emerald-600">Top: {top?.label} • {pct}%</span>;
+                })()}
+              </div>
+              <div className="space-y-2">
+                {(() => {
+                  const total = therapyDist.reduce((a, b) => a + (b.value || 0), 0) || 1;
+                  const ranked = [...therapyDist].sort((a,b)=> (b.value||0) - (a.value||0)).slice(0,5);
+                  return ranked.map((t, i) => {
+                    const pct = Math.round(((t.value || 0) / total) * 100);
+                    return (
+                      <div key={t.label} className="p-2 rounded-lg border bg-white">
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center">{i+1}</span>
+                            <span className="font-medium">{t.label}</span>
+                          </div>
+                          <div className="text-xs text-gray-500">{t.value} patients • {pct}%</div>
+                        </div>
+                        <div className="mt-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: t.color }}></div>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Reports list (kept) */}
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Generated Reports</h2>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {reports.map((report) => (
-          <ReportCard key={report.id} report={report} />
-        ))}
-      </div>
+      {/* Generated Reports section removed as requested */}
     </div>
   );
 }

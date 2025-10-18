@@ -2,6 +2,7 @@ import { TherapySession } from '../models/TherapySession.js';
 import { Room } from '../models/Room.js';
 import { Hospital } from '../models/Hospital.js';
 import { User } from '../models/User.js';
+import { emitToHospital } from '../realtime/socket.js';
 
 function isSuper(user) { return user?.role === 'super_admin'; }
 function isHospAdmin(user) {
@@ -19,6 +20,7 @@ function canScheduleRole(user) {
 export const listSessions = async (req, res) => {
   try {
     const filter = {};
+ 
     // Query-based filters
     const q = req.query || {};
     if (q.patient_id) filter.patient_id = q.patient_id;
@@ -52,6 +54,50 @@ export const listSessions = async (req, res) => {
       .select('hospital_id patient_id doctor_id assigned_staff_id therapy_type status scheduled_at duration_min room_id outcomes')
       .lean();
     res.json({ sessions });
+  } catch (e) {
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+export const summarySessions = async (req, res) => {
+  try {
+    const q = req.query || {};
+    const now = new Date();
+    let rangeStart = null, rangeEnd = null;
+    if (q.from || q.to) {
+      if (q.from) { const f = new Date(q.from); if (!isNaN(f.getTime())) rangeStart = f; }
+      if (q.to) { const t = new Date(q.to); if (!isNaN(t.getTime())) rangeEnd = t; }
+    }
+    if (!rangeStart || !rangeEnd) {
+      const d = new Date(now);
+      const day = (d.getDay() + 6) % 7; // Monday=0
+      const start = new Date(d); start.setDate(d.getDate() - day); start.setHours(0,0,0,0);
+      const end = new Date(start); end.setDate(start.getDate() + 6); end.setHours(23,59,59,999);
+      rangeStart = rangeStart || start;
+      rangeEnd = rangeEnd || end;
+    }
+    const todayStart = new Date(now); todayStart.setHours(0,0,0,0);
+    const todayEnd = new Date(now); todayEnd.setHours(23,59,59,999);
+
+    const base = {};
+    if (!isSuper(req.user)) {
+      if (req.user.hospital_id) base.hospital_id = req.user.hospital_id;
+      if (isDoctor(req.user)) base.doctor_id = req.user._id;
+    }
+    if (q.hospital_id) base.hospital_id = q.hospital_id;
+    if (q.patient_id) base.patient_id = q.patient_id;
+    if (q.doctor_id) base.doctor_id = q.doctor_id;
+
+    const notCancelled = { ...base, status: { $ne: 'cancelled' } };
+
+    const [today, week, completed, pending] = await Promise.all([
+      TherapySession.countDocuments({ ...notCancelled, scheduled_at: { $gte: todayStart, $lte: todayEnd } }),
+      TherapySession.countDocuments({ ...notCancelled, scheduled_at: { $gte: rangeStart, $lte: rangeEnd } }),
+      TherapySession.countDocuments({ ...base, status: 'completed', scheduled_at: { $gte: rangeStart, $lte: rangeEnd } }),
+      TherapySession.countDocuments({ ...base, status: { $in: ['scheduled','in_progress','awaiting_confirmation'] }, scheduled_at: { $gte: rangeStart, $lte: rangeEnd } }),
+    ]);
+
+    res.json({ today, week, completed, pending });
   } catch (e) {
     res.status(500).json({ message: 'Server error' });
   }
@@ -183,6 +229,7 @@ export const createSession = async (req, res) => {
     }
 
     const s = await TherapySession.create(body);
+    try { emitToHospital(s.hospital_id, 'session:created', { session: s }); } catch {}
     res.status(201).json({ session: s });
   } catch (e) {
     res.status(400).json({ message: e.message || 'Bad request' });
@@ -337,6 +384,7 @@ export const updateSession = async (req, res) => {
     }
 
     const saved = await existing.save();
+    try { emitToHospital(saved.hospital_id, 'session:updated', { session: saved }); } catch {}
     res.json({ session: saved });
   } catch (e) {
     res.status(400).json({ message: e.message || 'Bad request' });
@@ -360,6 +408,7 @@ export const deleteSession = async (req, res) => {
       }
     }
     await TherapySession.findByIdAndDelete(id);
+    try { emitToHospital(existing.hospital_id, 'session:deleted', { id: existing._id }); } catch {}
     res.json({ message: 'Deleted' });
   } catch (e) {
     res.status(500).json({ message: 'Server error' });

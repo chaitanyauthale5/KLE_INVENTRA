@@ -6,6 +6,7 @@ import { User } from "@/services";
 import { Hospital } from "@/services";
 import { Rooms } from "@/services";
 import { RescheduleRequests } from "@/services";
+import { getSocket } from "@/realtime/socket.js";
  
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -42,6 +43,7 @@ function TherapyScheduling({ currentUser }) {
   const [advanced, setAdvanced] = useState(false);
   const [rows, setRows] = useState([]);
   const [roomOptions, setRoomOptions] = useState({}); // key: therapy|date|time|duration -> [{id,name,available_spots}]
+  const [stat, setStat] = useState(null);
   // Filters
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterTherapy, setFilterTherapy] = useState('');
@@ -73,7 +75,7 @@ function TherapyScheduling({ currentUser }) {
 
       if (user.role === 'super_admin') {
         console.log('Super admin: Loading all data');
-      } else if (user.hospital_id && ['clinic_admin', 'doctor'].includes(user.role)) {
+      } else if (user.hospital_id && ['clinic_admin', 'doctor', 'office_executive', 'hospital_admin'].includes(user.role)) {
         patientFilter = { hospital_id: user.hospital_id };
         sessionFilter = { hospital_id: user.hospital_id, from: nowIso };
         console.log('Hospital-based user: Filtering by hospital_id:', user.hospital_id);
@@ -198,6 +200,84 @@ function TherapyScheduling({ currentUser }) {
     // Always attempt to load data; loadData resolves user if prop is missing
     loadData();
   }, [currentUser, loadData]);
+
+  const loadSummary = useCallback(async () => {
+    const me = self || await User.me().catch(() => null);
+    if (!me) return;
+    try {
+      const s = await TherapySession.summary(me.hospital_id ? { hospital_id: me.hospital_id } : {});
+      setStat(s);
+    } catch {}
+  }, [self]);
+
+  useEffect(() => {
+    loadSummary();
+  }, [loadSummary]);
+
+  // Realtime updates: listen to session create/update/delete
+  useEffect(() => {
+    const sock = getSocket?.();
+    if (!sock) return;
+    const ensurePatient = async (patientId) => {
+      if (!patientId) return;
+      const exists = patients.some(p => String(p.id) === String(patientId));
+      if (exists) return;
+      try {
+        const p = await Patient.get(patientId);
+        if (p && p.id) setPatients(prev => {
+          if (prev.some(x => String(x.id) === String(p.id))) return prev;
+          return [...prev, p];
+        });
+      } catch {}
+    };
+    const toLocal = (s) => {
+      const id = s?.id || s?._id;
+      const at = s?.scheduled_at || s?.scheduledAt;
+      let scheduled_date = s?.scheduled_date;
+      let scheduled_time = s?.scheduled_time;
+      if (at && (!scheduled_date || !scheduled_time)) {
+        const d = new Date(at);
+        const to2 = (n) => String(n).padStart(2, '0');
+        scheduled_date = scheduled_date || `${d.getFullYear()}-${to2(d.getMonth()+1)}-${to2(d.getDate())}`;
+        scheduled_time = scheduled_time || `${to2(d.getHours())}:${to2(d.getMinutes())}`;
+      }
+      return { ...s, id, scheduled_date, scheduled_time };
+    };
+    const onCreated = (payload) => {
+      const s = toLocal(payload?.session || payload);
+      if (!s?.id) return;
+      setSessions((prev) => {
+        const i = prev.findIndex(x => String(x.id) === String(s.id));
+        if (i >= 0) { const arr = prev.slice(); arr[i] = { ...arr[i], ...s }; return arr; }
+        return [...prev, s];
+      });
+      ensurePatient(s.patient_id);
+      loadSummary();
+    };
+    const onUpdated = (payload) => {
+      const s = toLocal(payload?.session || payload);
+      if (!s?.id) return;
+      setSessions((prev) => prev.map(x => String(x.id) === String(s.id) ? { ...x, ...s } : x));
+      ensurePatient(s.patient_id);
+      loadSummary();
+    };
+    const onDeleted = (payload) => {
+      const delId = payload?.id || payload?._id;
+      if (!delId) return;
+      setSessions((prev) => prev.filter(x => String(x.id) !== String(delId)));
+      loadSummary();
+    };
+    sock.on('session:created', onCreated);
+    sock.on('session:updated', onUpdated);
+    sock.on('session:deleted', onDeleted);
+    return () => {
+      try {
+        sock.off('session:created', onCreated);
+        sock.off('session:updated', onUpdated);
+        sock.off('session:deleted', onDeleted);
+      } catch {}
+    };
+  }, []);
 
   // Load staff list for therapist assignment
   useEffect(() => {
@@ -626,21 +706,45 @@ function TherapyScheduling({ currentUser }) {
 
   const sessionCounts = useMemo(() => {
     const today = format(new Date(), 'yyyy-MM-dd');
-    let todayCount = 0, completed = 0, pending = 0;
+    let todayCount = 0, weekCount = 0, completed = 0, pending = 0;
     for (const s of sessions) {
       if (s.status === 'completed') completed++;
       if (s.status === 'scheduled' || s.status === 'in_progress') pending++;
       if (s.scheduled_date === today) todayCount++;
+      const d = new Date(s.scheduled_date || s.scheduled_at || 0);
+      if (!isNaN(d.getTime()) && d >= weekStart && d <= weekEnd) weekCount++;
     }
-    return { today: todayCount, completed, pending, total: sessions.length };
-  }, [sessions]);
+    return { today: todayCount, week: weekCount, completed, pending, total: sessions.length };
+  }, [sessions, weekStart, weekEnd]);
 
   const getSessionsCount = (type) => {
+    if (stat) {
+      if (type === 'today') return stat.today;
+      if (type === 'week') return stat.week;
+      if (type === 'completed') return stat.completed;
+      if (type === 'pending') return stat.pending;
+    }
     if (type === 'today') return sessionCounts.today;
+    if (type === 'week') return sessionCounts.week;
     if (type === 'completed') return sessionCounts.completed;
     if (type === 'pending') return sessionCounts.pending;
     return sessionCounts.total;
   };
+
+  useEffect(() => {
+    const missing = Array.from(new Set((sessions || []).map(s => s.patient_id).filter(Boolean))).filter(id => !patients.some(p => String(p.id) === String(id)));
+    if (missing.length === 0) return;
+    let stop = false;
+    (async () => {
+      for (const id of missing.slice(0, 25)) {
+        try {
+          const p = await Patient.get(id);
+          if (!stop && p?.id) setPatients(prev => (prev.some(x => String(x.id) === String(p.id)) ? prev : [...prev, p]));
+        } catch {}
+      }
+    })();
+    return () => { stop = true; };
+  }, [sessions, patients]);
 
   // View-only: no schedule/edit/delete handlers
 
