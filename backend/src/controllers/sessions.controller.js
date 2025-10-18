@@ -2,6 +2,7 @@ import { TherapySession } from '../models/TherapySession.js';
 import { Room } from '../models/Room.js';
 import { Hospital } from '../models/Hospital.js';
 import { User } from '../models/User.js';
+import { Patient } from '../models/Patient.js';
 import { emitToHospital } from '../realtime/socket.js';
 
 function isSuper(user) { return user?.role === 'super_admin'; }
@@ -249,8 +250,27 @@ export const updateSession = async (req, res) => {
     if (!existing) return res.status(404).json({ message: 'Not found' });
 
     if (!isSuper(req.user)) {
-      if (!req.user.hospital_id || String(req.user.hospital_id) !== String(existing.hospital_id)) {
-        return res.status(403).json({ message: 'Forbidden' });
+      if (req.user?.role !== 'patient') {
+        if (!req.user.hospital_id || String(req.user.hospital_id) !== String(existing.hospital_id)) {
+          return res.status(403).json({ message: 'Forbidden' });
+        }
+      }
+    }
+
+    // Patient can confirm proposed reschedule (awaiting_confirmation -> scheduled)
+    if (req.user?.role === 'patient') {
+      try {
+        const p = await Patient.findOne({ user_id: req.user._id }).select('_id').lean();
+        const owns = p && String(p._id) === String(existing.patient_id);
+        if (!owns) return res.status(403).json({ message: 'Forbidden' });
+        const wantsScheduled = req.body && req.body.status === 'scheduled';
+        if (wantsScheduled && existing.status === 'awaiting_confirmation') {
+          existing.status = 'scheduled';
+        } else {
+          return res.status(403).json({ message: 'Forbidden' });
+        }
+      } catch (e) {
+        return res.status(400).json({ message: 'Bad request' });
       }
     }
 
