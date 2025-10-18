@@ -430,6 +430,7 @@ PatientsPage.propTypes = {
         isOpen={showDetailModal}
         onClose={() => setShowDetailModal(false)}
         patientId={selectedPatientId}
+        currentUser={self}
         onEditPatient={handleEditPatient}
       />
 

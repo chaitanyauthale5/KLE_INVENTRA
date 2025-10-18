@@ -357,7 +357,7 @@ const generatePDFReport = (patient, sessions, feedback) => {
   }, 1000);
 };
 
-export default function PatientDetailModal({ isOpen, onClose, patientId }) {
+export default function PatientDetailModal({ isOpen, onClose, patientId, currentUser }) {
   const [patient, setPatient] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [feedback, setFeedback] = useState([]);
@@ -694,6 +694,7 @@ export default function PatientDetailModal({ isOpen, onClose, patientId }) {
               </div>
 
               {/* Appointment Section */}
+              {currentUser?.role !== 'clinic_admin' && (
               <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
@@ -732,6 +733,7 @@ export default function PatientDetailModal({ isOpen, onClose, patientId }) {
                   <p className="text-xs text-red-500 mt-2">Assign a doctor to enable appointment booking.</p>
                 )}
               </div>
+            )}
             </div>
           ) : (
             <div className="text-center py-20">

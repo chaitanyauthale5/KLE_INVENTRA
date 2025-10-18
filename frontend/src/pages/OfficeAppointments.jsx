@@ -71,7 +71,7 @@ export default function OfficeAppointments({ currentUser }) {
   // Removed inline new patient creation to avoid duplicates. Use Patient Management to add patients.
 
   return (
-    <div className="p-3 md:p-8 space-y-6">
+    <div className="p-6 md:p-8 space-y-6 bg-gradient-to-br from-blue-50 via-green-50 to-purple-50 rounded-2xl">
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-blue-500 to-green-500 rounded-2xl flex items-center justify-center shadow-lg">
           <CalendarIcon className="w-5 h-5 md:w-6 md:h-6 text-white" />
@@ -82,37 +82,37 @@ export default function OfficeAppointments({ currentUser }) {
         </div>
       </div>
 
-      <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-4 md:p-6 shadow-xl border border-white/50">
+      <div className="bg-white/80 backdrop-blur-md rounded-3xl p-4 md:p-6 shadow-md border border-white/60">
         <form onSubmit={handleBook} className="grid grid-cols-1 md:grid-cols-6 gap-3">
           <div className="md:col-span-2">
             <label className="block text-xs text-gray-600 mb-1">Patient</label>
-            <select value={form.patientId} onChange={(e)=>setForm(f=>({ ...f, patientId: e.target.value }))} className="w-full px-3 py-2 border rounded-lg">
+            <select value={form.patientId} onChange={(e)=>setForm(f=>({ ...f, patientId: e.target.value }))} className="w-full px-3 py-2 bg-white/80 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300">
               <option value="">Select patient</option>
               {patients.map(p => (<option key={p.id} value={p.id}>{p.full_name || p.name}</option>))}
             </select>
           </div>
           <div className="md:col-span-2">
             <label className="block text-xs text-gray-600 mb-1">Doctor</label>
-            <select value={form.doctorId} onChange={(e)=>setForm(f=>({ ...f, doctorId: e.target.value }))} className="w-full px-3 py-2 border rounded-lg">
+            <select value={form.doctorId} onChange={(e)=>setForm(f=>({ ...f, doctorId: e.target.value }))} className="w-full px-3 py-2 bg-white/80 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300">
               <option value="">Select doctor</option>
               {doctors.map(d => (<option key={d.id} value={d.id}>{d.full_name || d.name}</option>))}
             </select>
           </div>
           <div>
             <label className="block text-xs text-gray-600 mb-1">Date</label>
-            <input type="date" value={form.date} onChange={(e)=>setForm(f=>({ ...f, date: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
+            <input type="date" value={form.date} onChange={(e)=>setForm(f=>({ ...f, date: e.target.value }))} className="w-full px-3 py-2 bg-white/80 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300" />
           </div>
           <div>
             <label className="block text-xs text-gray-600 mb-1">Time</label>
-            <input type="time" value={form.time} onChange={(e)=>setForm(f=>({ ...f, time: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
+            <input type="time" value={form.time} onChange={(e)=>setForm(f=>({ ...f, time: e.target.value }))} className="w-full px-3 py-2 bg-white/80 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300" />
           </div>
           <div>
             <label className="block text-xs text-gray-600 mb-1">Duration (min)</label>
-            <input type="number" min="10" step="5" value={form.duration} onChange={(e)=>setForm(f=>({ ...f, duration: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
+            <input type="number" min="10" step="5" value={form.duration} onChange={(e)=>setForm(f=>({ ...f, duration: e.target.value }))} className="w-full px-3 py-2 bg-white/80 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300" />
           </div>
           <div className="md:col-span-6">
             <label className="block text-xs text-gray-600 mb-1">Notes</label>
-            <input type="text" value={form.notes} onChange={(e)=>setForm(f=>({ ...f, notes: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" placeholder="Optional notes" />
+            <input type="text" value={form.notes} onChange={(e)=>setForm(f=>({ ...f, notes: e.target.value }))} className="w-full px-3 py-2 bg-white/80 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300" placeholder="Optional notes" />
           </div>
           <div className="md:col-span-6 flex justify-end">
             <button type="submit" disabled={busy} className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-green-600 text-white disabled:opacity-50">{busy ? 'Booking...' : 'Book Appointment'}</button>
@@ -121,7 +121,7 @@ export default function OfficeAppointments({ currentUser }) {
       </div>
 
       {/* Prescription & Records (Read-only for selected patient) */}
-      <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-4 md:p-6 shadow-xl border border-white/50 mt-6">
+      <div className="bg-white/80 backdrop-blur-md rounded-3xl p-4 md:p-6 shadow-md border border-white/60 mt-6">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base md:text-lg font-semibold text-gray-800">Prescription & Records</h2>
           <div className="text-sm text-gray-500">{prescriptions.length} total</div>
