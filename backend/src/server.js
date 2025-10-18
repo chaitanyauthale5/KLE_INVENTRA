@@ -3,6 +3,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import app from './app.js';
 import { connectDB } from './config/db.js';
+import http from 'http';
+import { initSocket } from './realtime/socket.js';
 
 // Ensure .env values override any existing environment variables (e.g., system MONGO_URI)
 // Resolve backend/.env explicitly relative to this file
@@ -19,7 +21,9 @@ const PORT = process.env.PORT || 5000;
 (async () => {
   try {
     await connectDB();
-    app.listen(PORT, () => {
+    const server = http.createServer(app);
+    initSocket(server);
+    server.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
   } catch (err) {

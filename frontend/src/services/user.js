@@ -1,4 +1,5 @@
 import { initPush } from '@/firebase/messaging.js'
+import { initSocket, getSocket } from '@/realtime/socket.js'
 // Backend REST configuration
 const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) || '';
 
@@ -43,7 +44,12 @@ export const User = {
     try {
       // Try with cookies (credentials included) and optional bearer token
       const { user } = await api('/api/auth/me', { auth: true });
-      return normalizeUser(user);
+      const u = normalizeUser(user);
+      try {
+        const sock = initSocket();
+        if (u) sock.emit('register', { user_id: u.id, hospital_id: u.hospital_id || u.hospitalId });
+      } catch {}
+      return u;
     } catch (e) {
       // If unauthorized, clear bad token to avoid loops
       if (e && (e.status === 401 || e.code === 401)) {
@@ -82,7 +88,12 @@ export const User = {
       localStorage.setItem('ayursutra_current_user_id', user?._id || user?.id || '');
     } catch {}
     try { await initPush(); } catch {}
-    return normalizeUser(user);
+    const u = normalizeUser(user);
+    try {
+      const sock = initSocket();
+      if (u) sock.emit('register', { user_id: u.id, hospital_id: u.hospital_id || u.hospitalId });
+    } catch {}
+    return u;
   },
   async register({ full_name, email, phone, password, role = 'patient' }) {
     const { user, token } = await api('/api/auth/signup', {
@@ -94,7 +105,12 @@ export const User = {
       localStorage.setItem('ayursutra_current_user_id', user?._id || user?.id || '');
     } catch {}
     try { await initPush(); } catch {}
-    return normalizeUser(user);
+    const u = normalizeUser(user);
+    try {
+      const sock = initSocket();
+      if (u) sock.emit('register', { user_id: u.id, hospital_id: u.hospital_id || u.hospitalId });
+    } catch {}
+    return u;
   },
   async logout() {
     try {
@@ -102,6 +118,7 @@ export const User = {
       await api('/api/auth/signout', { method: 'POST' }).catch(() => {});
       localStorage.removeItem('ayursutra_token');
       localStorage.removeItem('ayursutra_current_user_id');
+      try { getSocket()?.emit('register', { user_id: null, hospital_id: null }); } catch {}
     } catch {}
     return true;
   },

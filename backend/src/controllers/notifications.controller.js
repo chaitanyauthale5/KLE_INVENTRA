@@ -1,6 +1,7 @@
 import { Notification } from '../models/Notification.js';
 import { User } from '../models/User.js';
 import { getMessaging } from '../config/firebaseAdmin.js';
+import { emitNotification } from '../realtime/socket.js';
 
 function isSuper(user) { return user?.role === 'super_admin'; }
 
@@ -81,6 +82,30 @@ export const createNotification = async (req, res) => {
         message,
         type: body.type || 'info',
       });
+      // Realtime emit to the target user
+      try { emitNotification(doc); } catch {}
+      // Fire-and-forget FCM push to the target user
+      try {
+        const messaging = getMessaging();
+        if (messaging && doc.user_id) {
+          const u = await User.findById(doc.user_id).select('fcm_tokens').lean();
+          const tokens = Array.isArray(u?.fcm_tokens) ? Array.from(new Set(u.fcm_tokens)).slice(0, 500) : [];
+          if (tokens.length > 0) {
+            await messaging.sendEachForMulticast({
+              tokens,
+              notification: { title, body: message },
+              data: {
+                title,
+                message,
+                type: String(doc.type || 'info'),
+                notification_id: String(doc._id),
+              }
+            });
+          }
+        }
+      } catch (pushErr) {
+        console.warn('[Notifications] Staff FCM push failed:', pushErr?.message || pushErr);
+      }
       return res.status(201).json({ notification: doc });
     }
 
@@ -95,6 +120,8 @@ export const createNotification = async (req, res) => {
       message,
       type: body.type || 'info',
     });
+    // Emit real-time event via WebSocket (in-app real-time)
+    try { emitNotification(doc); } catch {}
     // Fire-and-forget push delivery via FCM, if configured
     try {
       const messaging = getMessaging();
