@@ -751,7 +751,7 @@ function TherapyScheduling({ currentUser }) {
   }, [sessions, weekStart, weekEnd]);
 
   const getSessionsCount = (type) => {
-    const src = summaryCounts || sessionCounts;
+    const src = (typeof summaryCounts !== 'undefined' && summaryCounts) || (typeof stat !== 'undefined' && stat) || sessionCounts;
     if (type === 'today') return src.today || 0;
     if (type === 'week') return src.week || 0;
     if (type === 'completed') return src.completed || 0;
