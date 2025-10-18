@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { withUser } from '../middleware/hospitalScope.js';
-import { listSessions, createSession, updateSession, deleteSession, summarySessions } from '../controllers/sessions.controller.js';
+import { listSessions, createSession, updateSession, deleteSession, sessionsSummary } from '../controllers/sessions.controller.js';
 
 const router = Router();
 
-router.get('/summary', requireAuth, withUser, summarySessions);
+router.get('/summary', requireAuth, withUser, sessionsSummary);
 router.get('/', requireAuth, withUser, listSessions);
 router.post('/', requireAuth, withUser, createSession);
 router.put('/:id', requireAuth, withUser, updateSession);

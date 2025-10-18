@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   FileText,
   Download,
@@ -225,6 +225,7 @@ export default function ReportsLive() {
   const [reports, setReports] = useState(mockReports);
   const [isGenerating, setIsGenerating] = useState(false);
   const [loading, setLoading] = useState(true);
+  const exportRef = useRef(null);
   const [revenueSeries, setRevenueSeries] = useState([]);
   const [patientsSeries, setPatientsSeries] = useState([]);
   const [patientsLabels, setPatientsLabels] = useState([]);
@@ -232,31 +233,59 @@ export default function ReportsLive() {
   const [growthPct, setGrowthPct] = useState(0);
   // ratings removed (computed inline for stats)
 
-  const generateReport = () => {
+  const generateReport = async () => {
+    if (isGenerating) return;
     setIsGenerating(true);
-    window.showNotification?.({
-      type: 'info',
-      title: 'Generating Report',
-      message: 'Your new comprehensive report is being generated...',
-    });
-    setTimeout(() => {
-      const newReport = {
-        id: `RPT${Math.floor(Math.random() * 900) + 100}`,
-        title: 'On-Demand Comprehensive Report',
-        type: 'Generated Report',
-        generatedDate: new Date().toISOString(),
-        status: 'Ready',
-        pages: 20,
-        description: 'A newly generated report with the latest data.',
-      };
-      setReports((prev) => [newReport, ...prev]);
+    try {
+      window.showNotification?.({ type: 'info', title: 'Generating Report', message: 'Preparing PDF export…' });
+      const el = exportRef.current || document.body;
+      // Dynamically import html2canvas and jsPDF from CDN (no install needed)
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('https://cdn.skypack.dev/html2canvas'),
+        import('https://cdn.skypack.dev/jspdf')
+      ]);
+      const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+      const imgData = canvas.toDataURL('image/png');
+      // A4 portrait sizes
+      const pdf = new jsPDF({ orientation: 'p', unit: 'pt', format: 'a4' });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pageWidth - 40; // margins
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let y = 20;
+      if (imgHeight <= pageHeight - 40) {
+        pdf.addImage(imgData, 'PNG', 20, y, imgWidth, imgHeight);
+      } else {
+        // paginate if content taller than one page
+        let remainingHeight = imgHeight;
+        let position = y;
+        let sX = 0, sY = 0;
+        const sliceHeight = (canvas.width * (pageHeight - 40)) / imgWidth;
+        while (remainingHeight > 0) {
+          const pageCanvas = document.createElement('canvas');
+          pageCanvas.width = canvas.width;
+          pageCanvas.height = Math.min(sliceHeight, canvas.height - sY);
+          const ctx = pageCanvas.getContext('2d');
+          ctx.drawImage(canvas, sX, sY, canvas.width, pageCanvas.height, 0, 0, canvas.width, pageCanvas.height);
+          const pageImg = pageCanvas.toDataURL('image/png');
+          if (position > y) pdf.addPage();
+          pdf.addImage(pageImg, 'PNG', 20, y, imgWidth, (pageCanvas.height * imgWidth) / canvas.width);
+          sY += pageCanvas.height;
+          remainingHeight -= (pageCanvas.height * imgWidth) / canvas.width;
+          position += pageHeight;
+        }
+      }
+      const ts = new Date();
+      const name = `AyurSutra-Report-${ts.getFullYear()}${String(ts.getMonth()+1).padStart(2,'0')}${String(ts.getDate()).padStart(2,'0')}.pdf`;
+      pdf.save(name);
+      window.showNotification?.({ type: 'success', title: 'Report downloaded', message: name });
+    } catch (e) {
+      console.error('PDF export failed', e);
+      window.showNotification?.({ type: 'warning', title: 'PDF export failed', message: 'Falling back to browser Print dialog.' });
+      try { window.print(); } catch {}
+    } finally {
       setIsGenerating(false);
-      window.showNotification?.({
-        type: 'success',
-        title: 'Report Ready!',
-        message: 'Your new report has been successfully generated.',
-      });
-    }, 2000);
+    }
   };
 
   const load = async () => {
@@ -344,7 +373,7 @@ export default function ReportsLive() {
   }, []);
 
   return (
-    <div className="p-8">
+    <div className="p-8" ref={exportRef}>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8">
         <div className="flex items-center gap-4">
