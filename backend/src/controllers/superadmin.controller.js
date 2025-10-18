@@ -4,6 +4,9 @@ import { User } from '../models/User.js';
 import { FinanceTransaction } from '../models/FinanceTransaction.js';
 import { PatientFeedback } from '../models/PatientFeedback.js';
 import bcrypt from 'bcryptjs';
+import { User as UserModel } from '../models/User.js';
+import { TherapySession } from '../models/TherapySession.js';
+import { sendMail } from '../utils/mailer.js';
 
 const toObjectId = (id) => {
   try { return new mongoose.Types.ObjectId(String(id)); } catch { return null; }

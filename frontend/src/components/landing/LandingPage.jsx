@@ -208,7 +208,7 @@ export default function LandingPage({ onLogin }) {
               className="bg-gradient-to-r from-blue-600 via-green-600 to-purple-600 text-white px-10 py-5 rounded-2xl font-bold text-lg hover:shadow-2xl transition-all duration-300 flex items-center gap-3"
             >
               <Play className="w-6 h-6" />
-              Watch Live Demo
+              What is Panchkarma
             </motion.button>
             
             <motion.button

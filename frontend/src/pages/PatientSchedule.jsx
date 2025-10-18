@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Calendar, Clock, Activity, Info, ArrowRight } from "lucide-react";
-import { User, Patient, TherapySession } from "@/services";
+import { User, Patient, TherapySession, RescheduleRequests } from "@/services";
 
 function Badge({ children, color = "blue" }) {
   const map = {
@@ -18,55 +18,52 @@ export default function PatientSchedule() {
   const [loading, setLoading] = useState(true);
   const [patient, setPatient] = useState(null);
   const [sessions, setSessions] = useState([]);
+  const [pendingMap, setPendingMap] = useState({});
+  const [reqModal, setReqModal] = useState({ open: false, session: null, reason: '', date: '', time: '', busy: false });
 
   useEffect(() => {
-    (async () => {
+    let alive = true;
+    const load = async () => {
       try {
-        const me = await User.me();
-        if (!me) { setLoading(false); return; }
-        const patients = await Patient.filter({ user_id: me.id });
-        const p = patients?.[0] || null;
+        // Resolve the patient's own record
+        const p = await Patient.me().catch(async () => {
+          const me = await User.me().catch(() => null);
+          if (!me) return null;
+          const arr = await Patient.filter({ user_id: me.id }).catch(() => []);
+          return arr?.[0] || null;
+        });
+        if (!alive) return;
         setPatient(p);
         if (p) {
-          const list = await TherapySession.filter({ patient_id: p.id }, "-scheduled_date", 60);
-          setSessions(list || []);
+          const list = await TherapySession.filter({ patient_id: p.id }).catch(() => []);
+          if (!alive) return;
+          setSessions(Array.isArray(list) ? list : []);
+          const reqs = await RescheduleRequests.list({ status: 'pending' }).catch(() => []);
+          if (!alive) return;
+          const map = {};
+          for (const r of (reqs || [])) { if (r.session_id) map[String(r.session_id)] = true; }
+          setPendingMap(map);
+        } else {
+          setSessions([]);
+          setPendingMap({});
         }
-      } catch (e) {
-        console.warn("Failed to load schedule, using demo", e);
       } finally {
-        setLoading(false);
+        if (alive) setLoading(false);
       }
-    })();
+    };
+    load();
+    const id = setInterval(load, 30000); // poll every 30s for near real-time
+    return () => { alive = false; clearInterval(id); };
   }, []);
 
-  // Build grouped-by-date view with demo fallback
-  const { grouped, upcoming, isDemo } = useMemo(() => {
-    let list = Array.isArray(sessions) ? sessions : [];
-    const hasData = list.length > 0;
-
-    if (!hasData) {
-      const today = new Date();
-      const day = (offset) => {
-        const d = new Date(today);
-        d.setDate(d.getDate() + offset);
-        return d.toISOString().slice(0, 10);
-      };
-      list = [
-        { id: "d1", scheduled_date: day(0), scheduled_time: "10:00", therapy_type: "abhyanga", status: "scheduled", therapist_name: "Therapist Priya" },
-        { id: "d2", scheduled_date: day(0), scheduled_time: "16:00", therapy_type: "shirodhara", status: "scheduled", therapist_name: "Therapist Priya" },
-        { id: "d3", scheduled_date: day(1), scheduled_time: "09:30", therapy_type: "swedana", status: "scheduled", therapist_name: "Therapist Arjun" },
-        { id: "d4", scheduled_date: day(2), scheduled_time: "11:00", therapy_type: "basti", status: "scheduled", therapist_name: "Therapist Arjun" },
-        { id: "d5", scheduled_date: day(-1), scheduled_time: "10:00", therapy_type: "abhyanga", status: "completed", therapist_name: "Therapist Priya" },
-      ];
-    }
-
-    // Sort by date then time
+  // Build grouped-by-date view (real-time only)
+  const { grouped, upcoming } = useMemo(() => {
+    const list = Array.isArray(sessions) ? sessions : [];
     const sorted = [...list].sort((a, b) => {
       const da = String(a.scheduled_date), db = String(b.scheduled_date);
       if (da !== db) return da.localeCompare(db);
       return String(a.scheduled_time || "").localeCompare(String(b.scheduled_time || ""));
     });
-
     const map = new Map();
     for (const s of sorted) {
       const key = String(s.scheduled_date || "");
@@ -74,12 +71,9 @@ export default function PatientSchedule() {
       arr.push(s);
       map.set(key, arr);
     }
-
-    // upcoming = next 'scheduled' today or future
-    const nowISO = new Date().toISOString().slice(0, 16);
-    const upcomingItem = sorted.find((s) => s.status !== "completed");
-
-    return { grouped: map, upcoming: upcomingItem || null, isDemo: !hasData };
+    // Find next non-completed session
+    const upcomingItem = sorted.find((s) => s.status !== "completed") || null;
+    return { grouped: map, upcoming: upcomingItem };
   }, [sessions]);
 
   const statusColor = (s) =>
@@ -90,6 +84,44 @@ export default function PatientSchedule() {
     const fromSession = sessions.find(s => s.therapist_name || s.therapist)?.therapist_name || sessions.find(s => s.therapist)?.therapist?.full_name;
     return fromSession || patient?.assigned_therapist || patient?.assigned_doctor || "Assigned";
   }, [sessions, patient]);
+
+  const openRequestModal = (s) => {
+    if (!s?.id) return;
+    const id = String(s.id);
+    if (pendingMap[id]) return;
+    setReqModal({ open: true, session: s, reason: '', date: '', time: '', busy: false });
+  };
+  const closeRequestModal = () => setReqModal({ open: false, session: null, reason: '', date: '', time: '', busy: false });
+  const submitRequest = async () => {
+    if (!reqModal.session?.id) return;
+    const id = String(reqModal.session.id);
+    if (!reqModal.reason.trim()) {
+      return window.showNotification?.({ type: 'error', title: 'Reason required', message: 'Please enter a short reason.' });
+    }
+    setReqModal(m => ({ ...m, busy: true }));
+    try {
+      const payload = { session_id: reqModal.session.id, reason: reqModal.reason.trim() };
+      if (reqModal.date && reqModal.time) { payload.requested_date = reqModal.date; payload.requested_time = reqModal.time; }
+      await RescheduleRequests.create(payload);
+      setPendingMap(m => ({ ...m, [id]: true }));
+      window.showNotification?.({ type: 'success', title: 'Request sent' });
+      closeRequestModal();
+    } catch (e) {
+      window.showNotification?.({ type: 'error', title: 'Failed', message: e?.message || 'Unable to send request' });
+      setReqModal(m => ({ ...m, busy: false }));
+    }
+  };
+
+  const confirmProposed = async (s) => {
+    if (!s?.id) return;
+    try {
+      await TherapySession.update(s.id, { status: 'scheduled' });
+      setSessions(ss => ss.map(x => x.id === s.id ? { ...x, status: 'scheduled' } : x));
+      window.showNotification?.({ type: 'success', title: 'Confirmed' });
+    } catch (e) {
+      window.showNotification?.({ type: 'error', title: 'Failed', message: e?.message || 'Unable to confirm' });
+    }
+  };
 
   if (loading) {
     return (
@@ -112,7 +144,6 @@ export default function PatientSchedule() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl md:text-3xl font-bold text-gray-900">My Schedule</h1>
-              {isDemo && <Badge color="purple">Demo</Badge>}
             </div>
             <p className="text-gray-500">View therapies scheduled by your doctor with date & time</p>
             <div className="mt-2"><Badge color="purple">Therapist: {therapistName}</Badge></div>
@@ -140,7 +171,9 @@ export default function PatientSchedule() {
 
       {/* Schedule list grouped by date */}
       <div className="space-y-5">
-        {Array.from(grouped.entries()).map(([date, items]) => (
+        {grouped.size === 0 ? (
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center text-gray-500">No sessions scheduled yet.</div>
+        ) : Array.from(grouped.entries()).map(([date, items]) => (
           <div key={date} className="bg-white rounded-2xl border border-gray-100 shadow-sm">
             <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
               <div className="flex items-center gap-2">
@@ -161,8 +194,21 @@ export default function PatientSchedule() {
                       <Clock className="w-4 h-4" />
                       <span>{s.scheduled_time || "--:--"}</span>
                     </div>
-                    <Badge color="gray">{s.room || "Room A"}</Badge>
+                    <Badge color="gray">{s.room_number || s.room_name || s.room || "Room"}</Badge>
                     <Badge color="purple">Therapist: {s.therapist_name || therapistName}</Badge>
+                    {s.status === 'scheduled' && (
+                      <button
+                        onClick={() => openRequestModal(s)}
+                        disabled={!!pendingMap[String(s.id)]}
+                        className={`px-2 py-1 text-xs rounded border ${pendingMap[String(s.id)] ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      >{pendingMap[String(s.id)] ? 'Requested' : 'Request reschedule'}</button>
+                    )}
+                    {s.status === 'awaiting_confirmation' && (
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => confirmProposed(s)} className="px-2 py-1 text-xs rounded bg-emerald-600 text-white">Confirm</button>
+                        <button onClick={() => openRequestModal(s)} className="px-2 py-1 text-xs rounded border">Request change</button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -178,6 +224,34 @@ export default function PatientSchedule() {
           Sessions are assigned by your clinic. If you need changes, please contact the front desk.
         </div>
       </div>
+
+      {reqModal.open && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <div className="bg-white w-full max-w-md rounded-2xl p-5 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-800 mb-3">Request reschedule</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Reason</label>
+                <textarea value={reqModal.reason} onChange={(e)=>setReqModal(m=>({...m, reason: e.target.value}))} className="w-full px-3 py-2 border rounded-lg" rows={3} placeholder="Why do you need a change?" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Preferred date (optional)</label>
+                  <input type="date" value={reqModal.date} onChange={(e)=>setReqModal(m=>({...m, date: e.target.value}))} className="w-full px-3 py-2 border rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Preferred time (optional)</label>
+                  <input type="time" value={reqModal.time} onChange={(e)=>setReqModal(m=>({...m, time: e.target.value}))} className="w-full px-3 py-2 border rounded-lg" />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button onClick={closeRequestModal} disabled={reqModal.busy} className="px-4 py-2 rounded border">Cancel</button>
+                <button onClick={submitRequest} disabled={reqModal.busy} className="px-4 py-2 rounded bg-gradient-to-r from-blue-600 to-indigo-600 text-white disabled:opacity-50">{reqModal.busy ? 'Sending...' : 'Send request'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

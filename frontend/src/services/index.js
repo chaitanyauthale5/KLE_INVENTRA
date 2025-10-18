@@ -124,6 +124,24 @@ export const Rooms = {
   }
 };
 
+// Reschedule Requests API client
+export const RescheduleRequests = {
+  async list(query = {}) {
+    const qs = new URLSearchParams(query).toString();
+    const data = await api(`/api/reschedule-requests${qs ? `?${qs}` : ''}`);
+    const arr = Array.isArray(data?.requests) ? data.requests : (Array.isArray(data?.items) ? data.items : []);
+    return arr.map(normalizeId);
+  },
+  async create(payload) {
+    const data = await api('/api/reschedule-requests', { method: 'POST', body: payload });
+    return normalizeId(data?.request || data);
+  },
+  async update(id, body) {
+    const data = await api(`/api/reschedule-requests/${id}`, { method: 'PATCH', body });
+    return normalizeId(data?.request || data);
+  },
+};
+
 // Clinic Inventory: Equipment
 export const Equipments = {
   async list(params = {}) {

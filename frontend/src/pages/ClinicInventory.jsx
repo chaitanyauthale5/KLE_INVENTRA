@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import PropTypes from 'prop-types';
-import { Rooms, Equipments, User } from '@/services';
+import { Rooms, Equipments, User, Hospital } from '@/services';
 import { Building, Wrench, Plus, Trash2, Save, ListChecks, Layers, Package, Info } from 'lucide-react';
 
 export default function ClinicInventory({ currentUser }) {
@@ -9,6 +9,9 @@ export default function ClinicInventory({ currentUser }) {
   const [rooms, setRooms] = useState([]);
   const [equipment, setEquipment] = useState([]);
   const [activeTab, setActiveTab] = useState('rooms');
+  const [hospital, setHospital] = useState(null);
+  const [policy, setPolicy] = useState({ business_hours: { mon:{start:'09:00',end:'18:00'}, tue:{start:'09:00',end:'18:00'}, wed:{start:'09:00',end:'18:00'}, thu:{start:'09:00',end:'18:00'}, fri:{start:'09:00',end:'18:00'}, sat:{start:'09:00',end:'14:00'}, sun:null }, blackout_dates: [], policies: { lead_time_hours: 2, max_sessions_per_patient_per_day: 3, max_sessions_per_staff_per_day: 10, auto_assign_staff: false, max_reschedule_requests_per_week: 3, stale_request_hours: 48 }, therapy_config: {} });
+  const [savingPolicy, setSavingPolicy] = useState(false);
 
   const [roomForm, setRoomForm] = useState({ name: '', capacity: 1, therapy_types: [], status: 'active', notes: '' });
   const [equipForm, setEquipForm] = useState({ name: '', quantity: 1, status: 'available', notes: '' });
@@ -27,6 +30,18 @@ export default function ClinicInventory({ currentUser }) {
       const me = currentUser || await User.me().catch(() => null);
       setSelf(me);
       await refresh();
+      if (me?.hospital_id) {
+        try {
+          const h = await Hospital.get(me.hospital_id);
+          setHospital(h);
+          setPolicy({
+            business_hours: h?.business_hours || policy.business_hours,
+            blackout_dates: Array.isArray(h?.blackout_dates) ? h.blackout_dates : [],
+            policies: { ...policy.policies, ...(h?.policies||{}) },
+            therapy_config: h?.therapy_config || {},
+          });
+        } catch { setHospital(null); }
+      }
     })();
   }, [currentUser]);
 
@@ -43,6 +58,61 @@ export default function ClinicInventory({ currentUser }) {
   };
 
   const therapyOptions = ['Nasya','Raktmokshana','Vaman','Virechana','Basti'];
+  const therapyKeys = therapyOptions.map(t=>t.toLowerCase().trim().replace(/\s+/g,'_'));
+  const dowList = [
+    {key:'mon', label:'Mon'},
+    {key:'tue', label:'Tue'},
+    {key:'wed', label:'Wed'},
+    {key:'thu', label:'Thu'},
+    {key:'fri', label:'Fri'},
+    {key:'sat', label:'Sat'},
+    {key:'sun', label:'Sun'},
+  ];
+
+  const setBH = (day, open, field, value) => {
+    setPolicy(p => {
+      const bh = { ...(p.business_hours||{}) };
+      const cur = bh[day] || null;
+      if (!open) { bh[day] = null; return { ...p, business_hours: bh }; }
+      const next = cur || { start:'09:00', end:'18:00' };
+      if (field) next[field] = value;
+      bh[day] = next;
+      return { ...p, business_hours: bh };
+    });
+  };
+  const addBlackout = (date) => {
+    if (!date) return;
+    setPolicy(p => ({ ...p, blackout_dates: Array.from(new Set([...(p.blackout_dates||[]), date])) }));
+  };
+  const removeBlackout = (date) => {
+    setPolicy(p => ({ ...p, blackout_dates: (p.blackout_dates||[]).filter(d=>d!==date) }));
+  };
+  const setPol = (k, v) => setPolicy(p => ({ ...p, policies: { ...(p.policies||{}), [k]: v } }));
+  const setTherCfg = (key, field, value) => {
+    setPolicy(p => {
+      const tc = { ...(p.therapy_config||{}) };
+      const cur = tc[key] || {};
+      if (field === 'buffer_min') tc[key] = { ...cur, buffer_min: Number(value)||0 };
+      else if (field === 'allowed_start') tc[key] = { ...cur, allowed_hours: { ...(cur.allowed_hours||{}), start: value } };
+      else if (field === 'allowed_end') tc[key] = { ...cur, allowed_hours: { ...(cur.allowed_hours||{}), end: value } };
+      return { ...p, therapy_config: tc };
+    });
+  };
+  const savePolicies = async () => {
+    if (!canManage || !self?.hospital_id) return;
+    try {
+      setSavingPolicy(true);
+      await Hospital.update(self.hospital_id, {
+        business_hours: policy.business_hours,
+        blackout_dates: policy.blackout_dates,
+        policies: policy.policies,
+        therapy_config: policy.therapy_config,
+      });
+      window.showNotification?.({ type: 'success', title: 'Saved policies' });
+    } catch (e) {
+      window.showNotification?.({ type: 'error', title: 'Save failed', message: e?.message || 'Unable to save' });
+    } finally { setSavingPolicy(false); }
+  };
 
   const toggleTherapyType = (val) => {
     setRoomForm(f => {
@@ -167,6 +237,7 @@ export default function ClinicInventory({ currentUser }) {
       <div className="inline-flex p-1 bg-white rounded-2xl shadow border">
         <button onClick={()=>setActiveTab('rooms')} className={`px-4 py-2 rounded-xl transition ${activeTab==='rooms'?'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow':''}`}>Rooms</button>
         <button onClick={()=>setActiveTab('equipment')} className={`px-4 py-2 rounded-xl transition ${activeTab==='equipment'?'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow':''}`}>Equipment</button>
+        <button onClick={()=>setActiveTab('policies')} className={`px-4 py-2 rounded-xl transition ${activeTab==='policies'?'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow':''}`}>Policies</button>
       </div>
 
       {activeTab === 'rooms' && (
@@ -265,6 +336,110 @@ export default function ClinicInventory({ currentUser }) {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'policies' && (
+        <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-4 shadow-xl border space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2">
+              <div className="text-sm font-semibold text-gray-800 mb-2">Business hours</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {dowList.map(d => {
+                  const open = !!policy.business_hours?.[d.key];
+                  const v = policy.business_hours?.[d.key] || { start:'09:00', end:'18:00' };
+                  return (
+                    <div key={d.key} className="flex items-center justify-between gap-2 p-2 border rounded-xl">
+                      <div className="flex items-center gap-2">
+                        <input type="checkbox" checked={open} onChange={(e)=>setBH(d.key, e.target.checked)} />
+                        <span className="w-10 text-sm text-gray-700">{d.label}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input type="time" value={v.start} disabled={!open} onChange={(e)=>setBH(d.key, true, 'start', e.target.value)} className="px-2 py-1 border rounded" />
+                        <span className="text-gray-400">–</span>
+                        <input type="time" value={v.end} disabled={!open} onChange={(e)=>setBH(d.key, true, 'end', e.target.value)} className="px-2 py-1 border rounded" />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <div className="text-sm font-semibold text-gray-800 mb-2">Blackout dates</div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input type="date" onChange={(e)=>addBlackout(e.target.value)} className="px-2 py-1 border rounded w-full" />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(policy.blackout_dates||[]).map((d,i)=> (
+                    <button key={i} type="button" onClick={()=>removeBlackout(d)} className="px-2 py-1 text-xs rounded-full border bg-gray-50">{d} ×</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="text-sm font-semibold text-gray-800 mb-2">Policies</div>
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Lead time (hours)</label>
+                <input type="number" min="0" className="w-full px-2 py-1 border rounded" value={policy.policies.lead_time_hours||0} onChange={(e)=>setPol('lead_time_hours', Number(e.target.value)||0)} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Max/patient/day</label>
+                <input type="number" min="0" className="w-full px-2 py-1 border rounded" value={policy.policies.max_sessions_per_patient_per_day||0} onChange={(e)=>setPol('max_sessions_per_patient_per_day', Number(e.target.value)||0)} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Max/staff/day</label>
+                <input type="number" min="0" className="w-full px-2 py-1 border rounded" value={policy.policies.max_sessions_per_staff_per_day||0} onChange={(e)=>setPol('max_sessions_per_staff_per_day', Number(e.target.value)||0)} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Max requests/week</label>
+                <input type="number" min="0" className="w-full px-2 py-1 border rounded" value={policy.policies.max_reschedule_requests_per_week||0} onChange={(e)=>setPol('max_reschedule_requests_per_week', Number(e.target.value)||0)} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Stale request (h)</label>
+                <input type="number" min="1" className="w-full px-2 py-1 border rounded" value={policy.policies.stale_request_hours||48} onChange={(e)=>setPol('stale_request_hours', Number(e.target.value)||48)} />
+              </div>
+              <label className="flex items-center gap-2 text-xs mt-5"><input type="checkbox" checked={!!policy.policies.auto_assign_staff} onChange={(e)=>setPol('auto_assign_staff', e.target.checked)} />Auto assign therapist</label>
+            </div>
+          </div>
+
+          <div>
+            <div className="text-sm font-semibold text-gray-800 mb-2">Therapy config</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {therapyKeys.map(key => {
+                const cfg = policy.therapy_config?.[key] || {};
+                const ah = cfg.allowed_hours || {};
+                return (
+                  <div key={key} className="p-3 border rounded-xl">
+                    <div className="font-medium capitalize mb-2">{key.replace(/_/g,' ')}</div>
+                    <div className="grid grid-cols-3 gap-2 items-end">
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Buffer (min)</label>
+                        <input type="number" min="0" className="w-full px-2 py-1 border rounded" value={cfg.buffer_min||0} onChange={(e)=>setTherCfg(key,'buffer_min', e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Allowed start</label>
+                        <input type="time" className="w-full px-2 py-1 border rounded" value={ah.start||''} onChange={(e)=>setTherCfg(key,'allowed_start', e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Allowed end</label>
+                        <input type="time" className="w-full px-2 py-1 border rounded" value={ah.end||''} onChange={(e)=>setTherCfg(key,'allowed_end', e.target.value)} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {canManage && (
+            <div className="flex justify-end">
+              <button onClick={savePolicies} disabled={savingPolicy} className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white disabled:opacity-50 inline-flex items-center gap-2"><Save className="w-4 h-4"/>Save Policies</button>
+            </div>
+          )}
         </div>
       )}
 

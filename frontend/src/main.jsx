@@ -2,6 +2,8 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from '@/App.jsx'
 import '@/index.css'
+import { initPush } from '@/firebase/messaging.js'
+import { initSocket } from '@/realtime/socket.js'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
     <App />
@@ -11,7 +13,12 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 // 1) Unregister any existing service workers to avoid stale app shell
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations?.().then((regs) => {
-    (regs || []).forEach((r) => r.unregister().catch(() => {}));
+    (regs || []).forEach((r) => {
+      const scriptUrl = r?.active?.scriptURL || r?.installing?.scriptURL || r?.waiting?.scriptURL || '';
+      // Keep Firebase Messaging SW
+      if (scriptUrl.includes('firebase-messaging-sw.js')) return;
+      r.unregister().catch(() => {});
+    });
   }).catch(() => {});
 }
 
@@ -35,3 +42,8 @@ window.addEventListener('error', (e) => {
     window.location.reload();
   }
 }, true);
+
+// Initialize web push after page becomes interactive
+try { initPush(); } catch {}
+// Initialize WebSocket client
+try { initSocket(); } catch {}

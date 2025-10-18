@@ -1,4 +1,7 @@
 import { Notification } from '../models/Notification.js';
+import { User } from '../models/User.js';
+import { getMessaging } from '../config/firebaseAdmin.js';
+import { emitNotification } from '../realtime/socket.js';
 
 function isSuper(user) { return user?.role === 'super_admin'; }
 
@@ -30,6 +33,29 @@ export const listNotifications = async (req, res) => {
   }
 };
 
+export const registerFcmToken = async (req, res) => {
+  try {
+    const { token } = req.body || {};
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ message: 'token is required' });
+    }
+    const userId = req.user?._id;
+    if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+    // Add token to current user and optionally prune duplicates across other users
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $addToSet: { fcm_tokens: token } },
+      { new: true }
+    ).select('_id');
+    // Best-effort dedupe across other users (do not block response)
+    User.updateMany({ _id: { $ne: userId }, fcm_tokens: token }, { $pull: { fcm_tokens: token } }).catch(() => {});
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('registerFcmToken error:', e);
+    return res.status(400).json({ message: e.message || 'Bad request' });
+  }
+};
+
 export const createNotification = async (req, res) => {
   try {
     const user = req.user;
@@ -56,6 +82,30 @@ export const createNotification = async (req, res) => {
         message,
         type: body.type || 'info',
       });
+      // Realtime emit to the target user
+      try { emitNotification(doc); } catch {}
+      // Fire-and-forget FCM push to the target user
+      try {
+        const messaging = getMessaging();
+        if (messaging && doc.user_id) {
+          const u = await User.findById(doc.user_id).select('fcm_tokens').lean();
+          const tokens = Array.isArray(u?.fcm_tokens) ? Array.from(new Set(u.fcm_tokens)).slice(0, 500) : [];
+          if (tokens.length > 0) {
+            await messaging.sendEachForMulticast({
+              tokens,
+              notification: { title, body: message },
+              data: {
+                title,
+                message,
+                type: String(doc.type || 'info'),
+                notification_id: String(doc._id),
+              }
+            });
+          }
+        }
+      } catch (pushErr) {
+        console.warn('[Notifications] Staff FCM push failed:', pushErr?.message || pushErr);
+      }
       return res.status(201).json({ notification: doc });
     }
 
@@ -70,6 +120,40 @@ export const createNotification = async (req, res) => {
       message,
       type: body.type || 'info',
     });
+    // Emit real-time event via WebSocket (in-app real-time)
+    try { emitNotification(doc); } catch {}
+    // Fire-and-forget push delivery via FCM, if configured
+    try {
+      const messaging = getMessaging();
+      if (messaging) {
+        let tokens = [];
+        if (doc.user_id) {
+          const u = await User.findById(doc.user_id).select('fcm_tokens').lean();
+          tokens = Array.isArray(u?.fcm_tokens) ? u.fcm_tokens : [];
+        } else if (doc.hospital_id) {
+          const users = await User.find({ hospital_id: doc.hospital_id, fcm_tokens: { $exists: true, $ne: [] } }).select('fcm_tokens').lean();
+          tokens = users.flatMap((x) => Array.isArray(x.fcm_tokens) ? x.fcm_tokens : []);
+        } else {
+          const users = await User.find({ fcm_tokens: { $exists: true, $ne: [] } }).select('fcm_tokens').limit(500).lean();
+          tokens = users.flatMap((x) => Array.isArray(x.fcm_tokens) ? x.fcm_tokens : []);
+        }
+        tokens = Array.from(new Set(tokens)).slice(0, 500);
+        if (tokens.length > 0) {
+          await messaging.sendEachForMulticast({
+            tokens,
+            notification: { title, body: message },
+            data: {
+              title,
+              message,
+              type: String(doc.type || 'info'),
+              notification_id: String(doc._id),
+            }
+          });
+        }
+      }
+    } catch (pushErr) {
+      console.warn('[Notifications] FCM push failed:', pushErr?.message || pushErr);
+    }
     return res.status(201).json({ notification: doc });
   } catch (e) {
     res.status(400).json({ message: e.message || 'Bad request' });

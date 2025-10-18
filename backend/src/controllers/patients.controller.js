@@ -4,6 +4,7 @@ import { Appointment } from '../models/Appointment.js';
 import { User } from '../models/User.js';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import { sendMail } from '../utils/mailer.js';
 
 export const listPatients = async (req, res) => {
   try {
@@ -106,6 +107,8 @@ export const createPatient = async (req, res) => {
       }
     }
     // If email + password are given, create or link a User account for patient portal
+    let createdUser = null;
+    let plainPasswordForEmail = null;
     if (body.email && body.password) {
       const email = String(body.email).toLowerCase();
       let user = await User.findOne({ email });
@@ -122,6 +125,8 @@ export const createPatient = async (req, res) => {
           has_selected_role: true,
           passwordHash,
         });
+        createdUser = user;
+        plainPasswordForEmail = String(body.password);
       } else {
         // Ensure role and hospital scope are aligned
         if (!user.role || user.role === 'guardian') user.role = 'patient';
@@ -142,6 +147,45 @@ export const createPatient = async (req, res) => {
     } catch {}
 
     const created = await Patient.create(body);
+
+    // Send patient welcome email with personal/contact info and credentials (if created)
+    try {
+      if (body.email) {
+        const loginBase = process.env.APP_URL || (process.env.FRONTEND_ORIGINS || process.env.FRONTEND_ORIGIN || '').split(',')[0] || 'http://localhost:5173';
+        const loginUrl = `${loginBase}`;
+        const subject = 'Your AyurSutra Patient Account';
+        const lines = [];
+        const htmlParts = [];
+        htmlParts.push('<div style="font-family:Arial,sans-serif;">');
+        htmlParts.push('<h2>Welcome to AyurSutra</h2>');
+        htmlParts.push('<p>Your patient profile has been created with the following details:</p>');
+        htmlParts.push('<div style="margin:10px 0;padding:10px;border:1px solid #eee;border-radius:8px;background:#fafafa">');
+        if (created?.name) { htmlParts.push(`<p style=\"margin:0\"><strong>Name:</strong> ${created.name}</p>`); lines.push(`Name: ${created.name}`); }
+        if (created?.email) { htmlParts.push(`<p style=\"margin:0\"><strong>Email:</strong> ${created.email}</p>`); lines.push(`Email: ${created.email}`); }
+        if (created?.phone) { htmlParts.push(`<p style=\"margin:0\"><strong>Phone:</strong> ${created.phone}</p>`); lines.push(`Phone: ${created.phone}`); }
+        if (created?.gender) { htmlParts.push(`<p style=\"margin:0\"><strong>Gender:</strong> ${created.gender}</p>`); lines.push(`Gender: ${created.gender}`); }
+        if (created?.dob) { htmlParts.push(`<p style=\"margin:0\"><strong>DOB:</strong> ${new Date(created.dob).toLocaleDateString()}</p>`); lines.push(`DOB: ${new Date(created.dob).toLocaleDateString()}`); }
+        if (created?.address) { htmlParts.push(`<p style=\"margin:0\"><strong>Address:</strong> ${created.address}</p>`); lines.push(`Address: ${created.address}`); }
+        htmlParts.push('</div>');
+        if (createdUser && plainPasswordForEmail) {
+          htmlParts.push('<p>You can sign in to your patient portal with the following credentials:</p>');
+          htmlParts.push(`<p><strong>Login:</strong> ${createdUser.email}</p>`);
+          htmlParts.push(`<p><strong>Temporary Password:</strong> ${plainPasswordForEmail}</p>`);
+          htmlParts.push(`<p>Sign in here: <a href=\"${loginUrl}\" target=\"_blank\" rel=\"noreferrer\">${loginUrl}</a></p>`);
+          lines.push(`Login: ${createdUser.email}`);
+          lines.push(`Temporary Password: ${plainPasswordForEmail}`);
+          lines.push(`Sign in: ${loginUrl}`);
+        }
+        htmlParts.push('<p style="margin-top:10px;color:#555">If any detail looks incorrect, please contact the clinic. For security, change your password after first login.</p>');
+        htmlParts.push('</div>');
+        const html = htmlParts.join('');
+        const text = lines.join('\n');
+        await sendMail({ to: String(body.email), subject, text, html });
+      }
+    } catch (mailErr) {
+      console.warn('[Patients] Failed to send patient onboarding email:', mailErr?.message || mailErr);
+    }
+
     res.status(201).json({ patient: created });
   } catch (e) {
     res.status(400).json({ message: e.message || 'Bad request' });
