@@ -11,6 +11,8 @@ import {
 import AIAvatarAssistant from '../avatar/AIAvatarAssistant';
 import AIDoctorBot from '../doctor/AIDoctorBot';
 
+const SHOW_BOTS = false;
+
 // Enhanced floating particles with Ayurvedic elements
 const FloatingParticles = () => {
   const particles = Array.from({ length: 20 }, (_, i) => i);
@@ -1141,8 +1143,8 @@ export default function LandingPageComponent({ onLogin, onNavigateToApp }) {
       </AnimatePresence>
 
       {/* AI Assistants */}
-      <AIAvatarAssistant />
-      <AIDoctorBot />
+      {SHOW_BOTS && <AIAvatarAssistant />}
+      {SHOW_BOTS && <AIDoctorBot />}
     </div>
   );
 }
