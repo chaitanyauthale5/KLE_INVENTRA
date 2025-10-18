@@ -484,6 +484,33 @@ export const Notification = {
 };
 export const ConsultationLog = { list: async () => [], filter: async () => [], create: async () => ({}), update: async () => ({}), delete: async () => ({}) };
 
+// Finance API client
+export const Finance = {
+  async create(payload) {
+    const data = await api('/api/finances', { method: 'POST', body: payload });
+    return normalizeId(data?.transaction || data);
+  },
+  async list(query = {}) {
+    const qs = new URLSearchParams(query).toString();
+    const data = await api(`/api/finances${qs ? `?${qs}` : ''}`);
+    return {
+      items: Array.isArray(data?.items) ? data.items.map(normalizeId) : [],
+      total: data?.total || 0,
+      page: data?.page || 1,
+      limit: data?.limit || 20,
+      summary: data?.summary || { incomeApproved: 0, expenseApproved: 0, netApproved: 0 },
+    };
+  },
+  async approve(id) {
+    const data = await api(`/api/finances/${id}/approve`, { method: 'POST' });
+    return normalizeId(data?.transaction || data);
+  },
+  async reject(id) {
+    const data = await api(`/api/finances/${id}/reject`, { method: 'POST' });
+    return normalizeId(data?.transaction || data);
+  }
+};
+
 // Super Admin API client
 export const SuperAdmin = {
   async listClinics(params = {}) {

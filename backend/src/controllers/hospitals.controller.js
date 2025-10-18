@@ -114,11 +114,11 @@ export const getHospitalSummary = async (req, res) => {
       User.countDocuments({ $or: [ { hospital_id: hid }, { hospital_id: String(hid) } ], role: 'office_executive' }),
       // Finance: also match both types
       FinanceTransaction.aggregate([
-        { $match: { $or: [ { hospital_id: hid }, { hospital_id: String(hid) } ] } },
+        { $match: { $and: [ { $or: [ { hospital_id: hid }, { hospital_id: String(hid) } ] }, { status: 'approved' } ] } },
         { $group: { _id: '$type', total: { $sum: '$amount' } } }
       ]),
       FinanceTransaction.aggregate([
-        { $match: { $and: [ { $or: [ { hospital_id: hid }, { hospital_id: String(hid) } ] }, { createdAt: { $gte: firstOfMonth } } ] } },
+        { $match: { $and: [ { $or: [ { hospital_id: hid }, { hospital_id: String(hid) } ] }, { createdAt: { $gte: firstOfMonth } }, { status: 'approved' } ] } },
         { $group: { _id: '$type', total: { $sum: '$amount' } } }
       ]),
       Patient.countDocuments({ $or: [ { hospital_id: hid }, { hospital_id: String(hid) } ], createdAt: { $gte: firstOfMonth } }),
@@ -145,6 +145,10 @@ export const getHospitalSummary = async (req, res) => {
       patients: patientsFinal,
       doctors: doctorsCount,
       office_executives: execsCount,
+      // Compatibility aliases for existing frontend
+      totalRevenue: income,
+      totalExpenses: expense,
+      revenue: income,
       income,
       expense,
       net,

@@ -62,6 +62,7 @@ export const seedDemoData = async (req, res) => {
             amount: Math.round(monthlyIncome / splits + (Math.random() * 5000 - 2500)),
             method: 'cash',
             category: 'therapy',
+            status: 'approved',
             created_at: day,
           });
           financeDocs.push({
@@ -70,6 +71,7 @@ export const seedDemoData = async (req, res) => {
             amount: Math.round(monthlyExpense / splits + (Math.random() * 3000 - 1500)),
             method: 'bank',
             category: 'operations',
+            status: 'approved',
             created_at: day,
           });
         }
@@ -156,7 +158,7 @@ export const listClinics = async (req, res) => {
                 from: 'financetransactions',
                 let: { hid: '$_id' },
                 pipeline: [
-                  { $match: { $expr: { $eq: ['$hospital_id','$$hid'] } } },
+                  { $match: { $expr: { $eq: ['$hospital_id','$$hid'] }, status: 'approved' } },
                   { $group: { _id: '$type', total: { $sum: '$amount' } } }
                 ],
                 as: 'financeAgg'
@@ -252,6 +254,7 @@ export const getClinicFinances = async (req, res) => {
     const type = req.query.type;
     const method = req.query.method;
     const category = req.query.category;
+    const status = req.query.status || 'approved';
 
     const match = { hospital_id: hid };
     if (from) match.created_at = { ...(match.created_at || {}), $gte: from };
@@ -259,6 +262,7 @@ export const getClinicFinances = async (req, res) => {
     if (type) match.type = type;
     if (method) match.method = method;
     if (category) match.category = category;
+    if (status) match.status = status;
 
     const [items, summary, total] = await Promise.all([
       FinanceTransaction.find(match)
@@ -404,7 +408,7 @@ export const getClinicProgress = async (req, res) => {
 
     // Revenue trend using finance transactions
     const revenueTrend = await FinanceTransaction.aggregate([
-      { $match: { hospital_id: hid, created_at: { $gte: from, $lte: to }, type: 'income' } },
+      { $match: { hospital_id: hid, created_at: { $gte: from, $lte: to }, type: 'income', status: 'approved' } },
       { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } }, total: { $sum: '$amount' } } },
       { $sort: { _id: 1 } }
     ]);

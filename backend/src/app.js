@@ -15,6 +15,7 @@ import equipmentRoutes from './routes/equipments.routes.js';
 import feedbackRoutes from './routes/feedbacks.routes.js';
 import superAdminRoutes from './routes/superadmin.routes.js';
 import prescriptionRoutes from './routes/prescriptions.routes.js';
+import financeRoutes from './routes/finances.routes.js';
 
 // Load env before reading process.env in this module
 dotenv.config();
@@ -82,6 +83,7 @@ app.use('/api/rooms', roomRoutes);
 app.use('/api/equipment', equipmentRoutes);
 app.use('/api/superadmin', superAdminRoutes);
 app.use('/api/prescriptions', prescriptionRoutes);
+app.use('/api/finances', financeRoutes);
 app.use('/api/feedbacks', feedbackRoutes);
 
 // Health check
