@@ -272,6 +272,8 @@ export default function PrescriptionRecords() {
     doc.print();
   };
 
+  const isPatient = role === 'patient';
+
   return (
     <div className="p-6 md:p-8">
       <div className="flex items-center justify-between mb-6">
@@ -477,7 +479,7 @@ export default function PrescriptionRecords() {
             <thead>
               <tr className="text-left text-gray-500">
                 <th className="py-2 pr-4">Date</th>
-                <th className="py-2 pr-4">Patient</th>
+                {!isPatient && <th className="py-2 pr-4">Patient</th>}
                 <th className="py-2 pr-4">Doctor</th>
                 <th className="py-2 pr-4">Complaints</th>
                 <th className="py-2 pr-4">Medicines</th>
@@ -490,7 +492,7 @@ export default function PrescriptionRecords() {
                 const summaryRow = (
                   <tr key={`${p.id}-summary`} className="align-top">
                     <td className="py-2 pr-4">{new Date(p.date || p.created_at || p.createdAt).toLocaleDateString()}</td>
-                    <td className="py-2 pr-4">{p.patient_name || 'Patient'}</td>
+                    {!isPatient && <td className="py-2 pr-4">{p.patient_name || 'Patient'}</td>}
                     <td className="py-2 pr-4">{p.doctor_name || '-'}</td>
                     <td className="py-2 pr-4">{p.complaints || '-'}</td>
                     <td className="py-2 pr-4">{(p.meds||[]).map(m=>m.name).filter(Boolean).join(', ')}</td>
@@ -505,72 +507,145 @@ export default function PrescriptionRecords() {
                 );
                 const detailRow = expandedId === p.id ? (
                   <tr key={`${p.id}-detail`}>
-                    <td colSpan={7} className="py-3 pr-4 bg-gray-50">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <td colSpan={isPatient ? 6 : 7} className="py-3 pr-4 bg-gray-50">
+                      <div className="space-y-4">
+                        {/* Advice full width */}
                         <div>
                           <div className="text-xs text-gray-500">Advice / Notes</div>
                           <div className="whitespace-pre-wrap">{p.advice || '-'}</div>
                         </div>
-                        <div>
-                          <div className="text-xs text-gray-500">Panchakarma Plan</div>
-                          <div><span className="text-gray-500 text-xs">Procedures:</span> {p.pk_plan?.procedures || '-'}</div>
-                          <div><span className="text-gray-500 text-xs">Oils/Decoctions:</span> {p.pk_plan?.oils || '-'}</div>
-                          <div><span className="text-gray-500 text-xs">Basti/Other:</span> {p.pk_plan?.basti || '-'}</div>
-                          <div><span className="text-gray-500 text-xs">Diet & Lifestyle:</span> {p.pk_plan?.diet || '-'}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500">Clinical</div>
-                          <div><span className="text-gray-500 text-xs">Vitals:</span> BP {p.clinical?.vitals?.bp || '-'}, Pulse {p.clinical?.vitals?.pulse || '-'}, Temp {p.clinical?.vitals?.temp || '-'}, SpO₂ {p.clinical?.vitals?.spo2 || '-'}</div>
-                          <div><span className="text-gray-500 text-xs">Diagnosis:</span> {p.clinical?.diagnosis || '-'}</div>
-                          <div><span className="text-gray-500 text-xs">Subjective:</span> {p.clinical?.subjective || '-'}</div>
-                          <div><span className="text-gray-500 text-xs">Objective:</span> {p.clinical?.objective || '-'}</div>
-                          <div><span className="text-gray-500 text-xs">Assessment:</span> {p.clinical?.assessment || '-'}</div>
-                          <div><span className="text-gray-500 text-xs">Plan:</span> {p.clinical?.plan || '-'}</div>
-                          <div><span className="text-gray-500 text-xs">Follow Up:</span> {p.clinical?.follow_up ? new Date(p.clinical.follow_up).toLocaleDateString() : '-'}</div>
-                          <div><span className="text-gray-500 text-xs">Consent:</span> {p.clinical?.consent ? 'Yes' : 'No'}</div>
-                        </div>
-                      </div>
-                      {(p.therapies||[]).length > 0 && (
-                        <div className="mt-3">
-                          <div className="text-xs text-gray-500 mb-1">Therapies</div>
-                          <table className="min-w-full text-xs">
-                            <thead>
-                              <tr className="text-left text-gray-500">
-                                <th className="py-1 pr-2">Therapy</th>
-                                <th className="py-1 pr-2">Duration</th>
-                                <th className="py-1 pr-2">Frequency</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y">
-                              {(p.therapies||[]).map((t, i)=> (
-                                <tr key={i}>
-                                  <td className="py-1 pr-2">{t.name || ''}</td>
-                                  <td className="py-1 pr-2">{t.duration || ''}</td>
-                                  <td className="py-1 pr-2">{t.frequency || ''}</td>
+
+                        {/* Medicines table (if any) */}
+                        {(p.meds||[]).length > 0 && (
+                          <div>
+                            <div className="text-xs text-gray-500 mb-1">Medicines</div>
+                            <table className="min-w-full text-xs">
+                              <thead>
+                                <tr className="text-left text-gray-500">
+                                  <th className="py-1 pr-2">Medicine</th>
+                                  <th className="py-1 pr-2">Dosage</th>
+                                  <th className="py-1 pr-2">Frequency</th>
+                                  <th className="py-1 pr-2">Duration</th>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                          {/* Plan details */}
-                          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-                            {(p.therapies||[]).map((t, i)=> (
-                              <div key={`plan-${i}`} className="p-2 bg-white border rounded-lg">
-                                <div className="text-xs font-medium text-gray-700">Plan for {t.name||'therapy'}</div>
-                                <div className="text-[11px] text-gray-600 flex flex-wrap gap-2 mt-1">
-                                  {t.plan_sessions>0 && <span>Sessions: {t.plan_sessions}</span>}
-                                  {t.plan_interval_days>0 && <span>Interval: {t.plan_interval_days}d</span>}
-                                  {t.plan_duration_min>0 && <span>Dur: {t.plan_duration_min}m</span>}
-                                  {t.plan_start_date && <span>Start: {new Date(t.plan_start_date).toLocaleDateString()}</span>}
-                                  {t.plan_preferred_time && <span>Time: {t.plan_preferred_time}</span>}
-                                  {Array.isArray(t.plan_preferred_days)&&t.plan_preferred_days.length>0 && <span>Days: {t.plan_preferred_days.join(',').toUpperCase()}</span>}
-                                  {t.plan_assigned_staff_id && <span>Therapist: {t.plan_assigned_staff_name || t.plan_assigned_staff_id}</span>}
-                                  {t.plan_notes && <span>Notes: {t.plan_notes}</span>}
-                                </div>
-                              </div>
-                            ))}
+                              </thead>
+                              <tbody className="divide-y">
+                                {(p.meds||[]).map((m, i)=> (
+                                  <tr key={i}>
+                                    <td className="py-1 pr-2">{m.name || ''}</td>
+                                    <td className="py-1 pr-2">{m.dosage || ''}</td>
+                                    <td className="py-1 pr-2">{m.frequency || ''}</td>
+                                    <td className="py-1 pr-2">{m.duration || ''}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        {/* Plan and Clinical side-by-side */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <div className="text-xs text-gray-500 mb-1">Panchakarma Plan</div>
+                            <table className="min-w-full text-xs">
+                              <thead>
+                                <tr className="text-left text-gray-500">
+                                  <th className="py-1 pr-2 w-40">Field</th>
+                                  <th className="py-1 pr-2">Value</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y">
+                                <tr><td className="py-1 pr-2">Procedures</td><td className="py-1 pr-2">{p.pk_plan?.procedures || '-'}</td></tr>
+                                <tr><td className="py-1 pr-2">Oils/Decoctions</td><td className="py-1 pr-2">{p.pk_plan?.oils || '-'}</td></tr>
+                                <tr><td className="py-1 pr-2">Basti/Other</td><td className="py-1 pr-2">{p.pk_plan?.basti || '-'}</td></tr>
+                                <tr><td className="py-1 pr-2">Diet & Lifestyle</td><td className="py-1 pr-2">{p.pk_plan?.diet || '-'}</td></tr>
+                              </tbody>
+                            </table>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500 mb-1">Clinical</div>
+                            <table className="min-w-full text-xs">
+                              <thead>
+                                <tr className="text-left text-gray-500">
+                                  <th className="py-1 pr-2 w-40">Field</th>
+                                  <th className="py-1 pr-2">Value</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y">
+                                <tr>
+                                  <td className="py-1 pr-2">Vitals</td>
+                                  <td className="py-1 pr-2">BP {p.clinical?.vitals?.bp || '-'}, Pulse {p.clinical?.vitals?.pulse || '-'}, Temp {p.clinical?.vitals?.temp || '-'}, SpO₂ {p.clinical?.vitals?.spo2 || '-'}</td>
+                                </tr>
+                                <tr><td className="py-1 pr-2">Diagnosis</td><td className="py-1 pr-2">{p.clinical?.diagnosis || '-'}</td></tr>
+                                <tr><td className="py-1 pr-2">Subjective</td><td className="py-1 pr-2 whitespace-pre-wrap">{p.clinical?.subjective || '-'}</td></tr>
+                                <tr><td className="py-1 pr-2">Objective</td><td className="py-1 pr-2 whitespace-pre-wrap">{p.clinical?.objective || '-'}</td></tr>
+                                <tr><td className="py-1 pr-2">Assessment</td><td className="py-1 pr-2 whitespace-pre-wrap">{p.clinical?.assessment || '-'}</td></tr>
+                                <tr><td className="py-1 pr-2">Plan</td><td className="py-1 pr-2 whitespace-pre-wrap">{p.clinical?.plan || '-'}</td></tr>
+                                <tr><td className="py-1 pr-2">Follow Up</td><td className="py-1 pr-2">{p.clinical?.follow_up ? new Date(p.clinical.follow_up).toLocaleDateString() : '-'}</td></tr>
+                                <tr><td className="py-1 pr-2">Consent</td><td className="py-1 pr-2">{p.clinical?.consent ? 'Yes' : 'No'}</td></tr>
+                              </tbody>
+                            </table>
                           </div>
                         </div>
-                      )}
+
+                        {/* Therapies table and plan details */}
+                        {(p.therapies||[]).length > 0 && (
+                          <div>
+                            <div className="text-xs text-gray-500 mb-1">Therapies</div>
+                            <table className="min-w-full text-xs">
+                              <thead>
+                                <tr className="text-left text-gray-500">
+                                  <th className="py-1 pr-2">Therapy</th>
+                                  <th className="py-1 pr-2">Duration</th>
+                                  <th className="py-1 pr-2">Frequency</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y">
+                                {(p.therapies||[]).map((t, i)=> (
+                                  <tr key={i}>
+                                    <td className="py-1 pr-2">{t.name || ''}</td>
+                                    <td className="py-1 pr-2">{t.duration || ''}</td>
+                                    <td className="py-1 pr-2">{t.frequency || ''}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            {/* Plan details */}
+                            <div className="mt-2">
+                              <div className="text-xs text-gray-500 mb-1">Therapy Plans</div>
+                              <table className="min-w-full text-[11px]">
+                                <thead>
+                                  <tr className="text-left text-gray-500">
+                                    <th className="py-1 pr-2">Therapy</th>
+                                    <th className="py-1 pr-2">Sessions</th>
+                                    <th className="py-1 pr-2">Interval</th>
+                                    <th className="py-1 pr-2">Duration</th>
+                                    <th className="py-1 pr-2">Start</th>
+                                    <th className="py-1 pr-2">Time</th>
+                                    <th className="py-1 pr-2">Days</th>
+                                    <th className="py-1 pr-2">Therapist</th>
+                                    <th className="py-1 pr-2">Notes</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y">
+                                  {(p.therapies||[]).map((t, i)=> (
+                                    <tr key={`plan-${i}`}>
+                                      <td className="py-1 pr-2">{t.name || '-'}</td>
+                                      <td className="py-1 pr-2">{t.plan_sessions>0 ? t.plan_sessions : '-'}</td>
+                                      <td className="py-1 pr-2">{t.plan_interval_days>0 ? `${t.plan_interval_days}d` : '-'}</td>
+                                      <td className="py-1 pr-2">{t.plan_duration_min>0 ? `${t.plan_duration_min}m` : '-'}</td>
+                                      <td className="py-1 pr-2">{t.plan_start_date ? new Date(t.plan_start_date).toLocaleDateString() : '-'}</td>
+                                      <td className="py-1 pr-2">{t.plan_preferred_time || '-'}</td>
+                                      <td className="py-1 pr-2">{Array.isArray(t.plan_preferred_days)&&t.plan_preferred_days.length>0 ? t.plan_preferred_days.join(',').toUpperCase() : '-'}</td>
+                                      <td className="py-1 pr-2">{t.plan_assigned_staff_name || t.plan_assigned_staff_id || '-'}</td>
+                                      <td className="py-1 pr-2 whitespace-pre-wrap">{t.plan_notes || '-'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ) : null;

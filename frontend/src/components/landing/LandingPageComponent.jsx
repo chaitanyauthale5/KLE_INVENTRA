@@ -374,7 +374,7 @@ export default function LandingPageComponent({ onLogin, onNavigateToApp }) {
               Sign Up
             </Link>
             <Link to={createPageUrl('SignIn')} className="sign-in-button relative z-10 bg-gradient-to-r from-blue-600 to-green-600 text-white px-4 py-2 rounded-xl shadow-none transition-colors text-sm font-medium flex items-center gap-2">
-              <span>Sign In</span>
+              <span>Login</span>
               <ArrowRight className="w-4 h-4" />
             </Link>
           </div>

@@ -74,8 +74,8 @@ export default function SignIn() {
         </div>
         <div className="auth-buttons flex-shrink-0 flex items-center gap-2">
           <Link to={createPageUrl('SignIn')} className="sign-in-button relative z-10 bg-gradient-to-r from-blue-600 to-green-600 text-white px-3 sm:px-4 py-2 rounded-xl shadow-none transition-colors text-sm font-medium flex items-center gap-2">
-            <span className="hidden sm:inline">Sign In</span>
-            <span className="sm:hidden">In</span>
+            <span className="hidden sm:inline">Login</span>
+            <span className="sm:hidden">Login</span>
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M5 12h14"></path>
               <path d="m12 5 7 7-7 7"></path>
@@ -91,8 +91,8 @@ export default function SignIn() {
       <div className="relative z-10 w-full max-w-md mx-auto mt-6 sm:mt-10">
         <div className="p-[1px] rounded-2xl bg-gradient-to-r from-blue-400/40 via-emerald-300/40 to-purple-400/40">
           <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl border border-white/40 p-6">
-            <h1 className="text-2xl font-bold text-gray-800 mb-2">Welcome</h1>
-            <p className="text-gray-500 mb-6">Sign in to continue to AyurSutra</p>
+            <h1 className="text-2xl font-bold text-gray-800 mb-2">Login</h1>
+            <p className="text-gray-500 mb-6">Login to continue to AyurSutra</p>
 
             {error && (
               <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-700 text-sm border border-red-200">
