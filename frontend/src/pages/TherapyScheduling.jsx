@@ -1,5 +1,5 @@
 /* eslint-disable react/prop-types */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useDeferredValue, memo } from "react";
 import { TherapySession } from "@/services";
 import { Patient } from "@/services";
 import { User } from "@/services";
@@ -47,11 +47,14 @@ function TherapyScheduling({ currentUser }) {
   const [filterTherapy, setFilterTherapy] = useState('');
   const [filterDate, setFilterDate] = useState('all'); // all | today | week | upcoming
   const [filterText, setFilterText] = useState('');
+  const deferredFilterText = useDeferredValue(filterText);
 
   // view-only: no calendar view
   // View-only: no scheduling/editing state
 
   const loadData = useCallback(async () => {
+    const nowIso = new Date().toISOString();
+    const FETCH_LIMIT = 100;
     // Resolve user from props or fallback to API to ensure rendering
     const user = currentUser || await User.me().catch(() => null);
     setSelf(user);
@@ -72,7 +75,7 @@ function TherapyScheduling({ currentUser }) {
         console.log('Super admin: Loading all data');
       } else if (user.hospital_id && ['clinic_admin', 'doctor'].includes(user.role)) {
         patientFilter = { hospital_id: user.hospital_id };
-        sessionFilter = { hospital_id: user.hospital_id };
+        sessionFilter = { hospital_id: user.hospital_id, from: nowIso };
         console.log('Hospital-based user: Filtering by hospital_id:', user.hospital_id);
       } else if (user.role === 'patient') {
         // First fetch the patient record, then load sessions by patient_id
@@ -101,7 +104,7 @@ function TherapyScheduling({ currentUser }) {
             setStatusMessage('No patient record linked to your account.');
             return;
           }
-          const sessionsData = await TherapySession.filter({ patient_id: fallbackId }, '-created_date', 500).catch(err => {
+          const sessionsData = await TherapySession.filter({ patient_id: fallbackId, from: nowIso, limit: FETCH_LIMIT }, '-created_date', 500).catch(err => {
             console.error('Error loading sessions for fallback patient:', err);
             return [];
           });
@@ -112,7 +115,7 @@ function TherapyScheduling({ currentUser }) {
           return;
         }
 
-        const sessionsData = await TherapySession.filter({ patient_id: patientId }, '-created_date', 500).catch(err => {
+        const sessionsData = await TherapySession.filter({ patient_id: patientId, from: nowIso, limit: FETCH_LIMIT }, '-created_date', 500).catch(err => {
           console.error('Error loading sessions for patient:', err);
           return [];
         });
@@ -124,14 +127,14 @@ function TherapyScheduling({ currentUser }) {
         return;
       } else if (user.role === 'guardian') {
         patientFilter = { guardian_ids: user.id };
-        sessionFilter = {}; // Will be filtered based on patient results
+        sessionFilter = { from: nowIso }; // Will be filtered based on patient results
         console.log('Guardian: Filtering by guardian_ids:', user.id);
       }
 
       console.log('Using filters for scheduling:', { patientFilter, sessionFilter });
 
       const [sessionsData, patientsData] = await Promise.all([
-        TherapySession.filter(sessionFilter, '-created_date', 500).catch(err => {
+        TherapySession.filter({ ...sessionFilter, from: nowIso, limit: FETCH_LIMIT }, '-created_date', 500).catch(err => {
           console.error('Error loading sessions:', err);
           return [];
         }),
@@ -216,7 +219,7 @@ function TherapyScheduling({ currentUser }) {
   const [suggestions, setSuggestions] = useState({}); // reqId -> [{date,time,label}]
   const loadRequests = useCallback(async () => {
     try {
-      const list = await RescheduleRequests.list({ status: 'pending' });
+      const list = await RescheduleRequests.list({ status: 'pending', limit: 50 });
       setReqs(Array.isArray(list) ? list : []);
     } catch {
       setReqs([]);
@@ -375,7 +378,7 @@ function TherapyScheduling({ currentUser }) {
     }
   };
 
-  const updateSessionStatus = async (sessionId, newStatus) => {
+  const updateSessionStatus = useCallback(async (sessionId, newStatus) => {
     const prev = sessions;
     setSessions(s => s.map(x => x.id === sessionId ? { ...x, status: newStatus } : x));
     try {
@@ -385,7 +388,7 @@ function TherapyScheduling({ currentUser }) {
       setSessions(prev);
       window.showNotification?.({ type: 'error', title: 'Update failed', message: e?.message || 'Unable to update status' });
     }
-  };
+  }, [sessions]);
 
   const addRow = () => {
     setRows(r => ([
@@ -549,36 +552,49 @@ function TherapyScheduling({ currentUser }) {
   };
 
   // Derived therapy list from data for filter dropdown
-  const allTherapies = Array.from(new Set((sessions || []).map(s => s.therapy_type).filter(Boolean))).sort();
+  const allTherapies = useMemo(() => Array.from(new Set((sessions || []).map(s => s.therapy_type).filter(Boolean))).sort(), [sessions]);
 
-  // Apply filters
-  const todayStr = format(new Date(), 'yyyy-MM-dd');
-  const weekStart = (() => { const d=new Date(); const day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); d.setHours(0,0,0,0); return d; })();
-  const weekEnd = new Date(weekStart.getTime()+6*24*3600*1000+86399999);
+  // Fast lookup for sessions by id
+  const sessionById = useMemo(() => {
+    const m = new Map();
+    for (const s of sessions) m.set(String(s.id), s);
+    return m;
+  }, [sessions]);
 
-  const filteredSessions = sessions.filter(s => {
-    // status
-    if (filterStatus !== 'all' && s.status !== filterStatus) return false;
-    // therapy
-    if (filterTherapy && s.therapy_type !== filterTherapy) return false;
-    // date quick filters
-    const d = new Date(s.scheduled_date || s.scheduled_at || 0);
-    if (isNaN(d.getTime())) return false;
-    if (filterDate === 'today' && format(d,'yyyy-MM-dd') !== todayStr) return false;
-    if (filterDate === 'week' && !(d >= weekStart && d <= weekEnd)) return false;
-    if (filterDate === 'upcoming' && d < new Date()) return false;
-    // text
-    if (filterText) {
-      const pName = (getPatientName(s.patient_id) || '').toLowerCase();
-      const tName = (s.therapy_type || '').replace(/_/g,' ').toLowerCase();
-      const q = filterText.toLowerCase();
-      if (!pName.includes(q) && !tName.includes(q)) return false;
-    }
-    return true;
-  });
+  // Apply filters (memoized)
+  const todayStr = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
+  const weekStart = useMemo(() => { const d=new Date(); const day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); d.setHours(0,0,0,0); return d; }, []);
+  const weekEnd = useMemo(() => new Date(weekStart.getTime()+6*24*3600*1000+86399999), [weekStart]);
 
-  // Group sessions by scheduled_date for compact list
-  const sessionsByDate = (() => {
+  // Fast patient name lookup to avoid O(n^2) find on every render
+  const patientNameMap = useMemo(() => {
+    const m = new Map();
+    for (const p of patients) m.set(p.id, p.full_name || p.name || `Patient ${p.id}`);
+    return m;
+  }, [patients]);
+
+  const filteredSessions = useMemo(() => {
+    const now = new Date();
+    const q = deferredFilterText.toLowerCase();
+    return sessions.filter(s => {
+      if (filterStatus !== 'all' && s.status !== filterStatus) return false;
+      if (filterTherapy && s.therapy_type !== filterTherapy) return false;
+      const d = new Date(s.scheduled_date || s.scheduled_at || 0);
+      if (isNaN(d.getTime())) return false;
+      if (filterDate === 'today' && format(d,'yyyy-MM-dd') !== todayStr) return false;
+      if (filterDate === 'week' && !(d >= weekStart && d <= weekEnd)) return false;
+      if (filterDate === 'upcoming' && d < now) return false;
+      if (q) {
+        const pName = (patientNameMap.get(s.patient_id) || '').toLowerCase();
+        const tName = (s.therapy_type || '').replace(/_/g,' ').toLowerCase();
+        if (!pName.includes(q) && !tName.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [sessions, filterStatus, filterTherapy, filterDate, deferredFilterText, todayStr, weekStart, weekEnd, patientNameMap]);
+
+  // Group sessions by scheduled_date for compact list (memoized)
+  const sessionsByDate = useMemo(() => {
     const map = new Map();
     const now = new Date();
     const toDateTime = (s) => {
@@ -588,48 +604,53 @@ function TherapyScheduling({ currentUser }) {
       }
       return new Date(s.scheduled_at || 0);
     };
-    const sorted = [...filteredSessions]
+    const sorted = filteredSessions
       .filter(s => {
         const dt = toDateTime(s);
         return !isNaN(dt.getTime()) && dt >= now; // upcoming only
       })
       .sort((a,b) => {
-      const ad = new Date(a.scheduled_date || 0).getTime();
-      const bd = new Date(b.scheduled_date || 0).getTime();
-      if (ad !== bd) return ad - bd;
-      return String(a.scheduled_time || '').localeCompare(String(b.scheduled_time || ''));
-    });
-    const list = sorted.slice(0, 5);
-    list.forEach(s => {
+        const ad = new Date(a.scheduled_date || 0).getTime();
+        const bd = new Date(b.scheduled_date || 0).getTime();
+        if (ad !== bd) return ad - bd;
+        return String(a.scheduled_time || '').localeCompare(String(b.scheduled_time || ''));
+      })
+      .slice(0, 5);
+    for (const s of sorted) {
       const key = s.scheduled_date || 'Unknown Date';
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(s);
-    });
+    }
     return map;
-  })();
+  }, [filteredSessions]);
+
+  const sessionCounts = useMemo(() => {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    let todayCount = 0, completed = 0, pending = 0;
+    for (const s of sessions) {
+      if (s.status === 'completed') completed++;
+      if (s.status === 'scheduled' || s.status === 'in_progress') pending++;
+      if (s.scheduled_date === today) todayCount++;
+    }
+    return { today: todayCount, completed, pending, total: sessions.length };
+  }, [sessions]);
 
   const getSessionsCount = (type) => {
-    const today = format(new Date(), 'yyyy-MM-dd');
-    switch (type) {
-      case 'today':
-        return sessions.filter(s => (s.scheduled_date === today) || (format(new Date(s.scheduled_date), 'yyyy-MM-dd') === today)).length;
-      case 'completed':
-        return sessions.filter(s => s.status === 'completed').length;
-      case 'pending':
-        return sessions.filter(s => s.status === 'scheduled' || s.status === 'in_progress').length;
-      default:
-        return sessions.length;
-    }
+    if (type === 'today') return sessionCounts.today;
+    if (type === 'completed') return sessionCounts.completed;
+    if (type === 'pending') return sessionCounts.pending;
+    return sessionCounts.total;
   };
 
   // View-only: no schedule/edit/delete handlers
 
   const getPatientName = (patientId) => {
-    const patient = patients.find(p => p.id === patientId);
-    return patient?.full_name || `Patient ${patientId}`;
+    return patientNameMap.get(patientId) || `Patient ${patientId}`;
   };
 
-  const therapists = staffList.filter(s => s.role === 'therapist' || String(s.department || '').toLowerCase().includes('therap'));
+  const therapists = useMemo(() => (
+    staffList.filter(s => s.role === 'therapist' || String(s.department || '').toLowerCase().includes('therap'))
+  ), [staffList]);
 
   const therapyVisuals = {
     'vamana': { 
@@ -701,7 +722,7 @@ function TherapyScheduling({ currentUser }) {
     return therapyVisuals[therapyType] || therapyVisuals.default;
   };
 
-  const StatCard = ({ title, value, icon: Icon, color }) => {
+  const StatCard = memo(({ title, value, icon: Icon, color }) => {
     return (
     <motion.div 
       whileHover={{ scale: 1.02, y: -2 }}
@@ -723,7 +744,7 @@ function TherapyScheduling({ currentUser }) {
       </div>
     </motion.div>
     );
-  };
+  });
 
   StatCard.propTypes = {
     title: PropTypes.string.isRequired,
@@ -732,16 +753,13 @@ function TherapyScheduling({ currentUser }) {
     color: PropTypes.string.isRequired
   };
 
-  const SessionCard = ({ session, canManage, onChangeStatus, onOpenReschedule }) => {
+  const SessionCard = memo(function SessionCard({ session, canManage, onChangeStatus, onOpenReschedule }) {
     const visual = getTherapyVisual(session.therapy_type);
     const label = String(session.status || 'scheduled').replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
     
     return (
       <motion.div
-        layout
-        initial={{ opacity: 0, y: 10, scale: 0.9 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: -10, scale: 0.9 }}
+        initial={false}
         whileHover={{ scale: 1.02, y: -2 }}
         transition={{ duration: 0.2 }}
         className={`relative p-3 rounded-xl ${visual.bgColor} border-l-4 ${visual.borderColor} shadow-sm transition-all duration-200`}
@@ -792,7 +810,7 @@ function TherapyScheduling({ currentUser }) {
         )}
       </motion.div>
     );
-  };
+  });
 
   SessionCard.propTypes = {
     session: PropTypes.shape({

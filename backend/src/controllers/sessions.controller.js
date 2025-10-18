@@ -45,7 +45,12 @@ export const listSessions = async (req, res) => {
       if (isDoctor(req.user)) filter.doctor_id = req.user._id;
     }
 
-    const sessions = await TherapySession.find(filter).sort({ scheduled_at: 1 });
+    const limit = Math.max(1, Math.min(500, parseInt(q.limit || '200', 10)));
+    const sessions = await TherapySession.find(filter)
+      .sort({ scheduled_at: 1 })
+      .limit(limit)
+      .select('hospital_id patient_id doctor_id assigned_staff_id therapy_type status scheduled_at duration_min room_id outcomes')
+      .lean();
     res.json({ sessions });
   } catch (e) {
     res.status(500).json({ message: 'Server error' });
