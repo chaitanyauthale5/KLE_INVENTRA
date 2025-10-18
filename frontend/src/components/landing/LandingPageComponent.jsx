@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { User } from '@/services';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';

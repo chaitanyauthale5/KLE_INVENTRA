@@ -19,7 +19,8 @@ async function registerTokenWithBackend(token) {
     const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) || '';
     const headers = { 'Content-Type': 'application/json' };
     const bearer = localStorage.getItem('ayursutra_token');
-    if (bearer) headers['Authorization'] = `Bearer ${bearer}`;
+    if (!bearer) return; // skip registering when not logged in to avoid 401 spam
+    headers['Authorization'] = `Bearer ${bearer}`;
     await fetch(`${API_BASE}/api/notifications/register-token`, {
       method: 'POST',
       headers,
