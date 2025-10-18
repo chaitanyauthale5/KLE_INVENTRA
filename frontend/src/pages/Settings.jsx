@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from "react";
 import { User } from "@/services";
+import { useI18n } from "@/i18n/index.jsx";
 import HospitalRegistrationModal from "../components/auth/HospitalRegistrationModal";
 import {
   Settings as SettingsIcon,
@@ -70,6 +71,7 @@ const ToggleSwitch = ({ label, description, checked, onChange }) => (
 );
 
 export default function SettingsPage() {
+  const { t, setLanguage } = useI18n();
   const [activeTab, setActiveTab] = useState("profile");
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -211,8 +213,8 @@ export default function SettingsPage() {
               <SettingsIcon className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-              <p className="text-gray-500">Manage your account and system preferences</p>
+              <h1 className="text-3xl font-bold text-gray-900">{t('settings_title','Settings')}</h1>
+              <p className="text-gray-500">{t('settings_subtitle','Manage your account and system preferences')}</p>
             </div>
           </div>
 
@@ -452,13 +454,13 @@ export default function SettingsPage() {
             
             {activeTab === "system" && (
               <div>
-                <SettingGroup title="Regional Settings">
+                <SettingGroup title={t('regional_settings','Regional Settings')}>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Language</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">{t('language','Language')}</label>
                       <select 
                         value={settings.system.language} 
-                        onChange={(e) => handleInputChange('system', 'language', e.target.value)} 
+                        onChange={(e) => { handleInputChange('system', 'language', e.target.value); try { setLanguage(e.target.value); } catch {} }} 
                         className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       >
                         <option value="en">English</option>
@@ -468,7 +470,7 @@ export default function SettingsPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Timezone</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">{t('timezone','Timezone')}</label>
                       <select 
                         value={settings.system.timezone} 
                         onChange={(e) => handleInputChange('system', 'timezone', e.target.value)} 
@@ -481,7 +483,7 @@ export default function SettingsPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Date Format</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">{t('date_format','Date Format')}</label>
                       <select 
                         value={settings.system.date_format} 
                         onChange={(e) => handleInputChange('system', 'date_format', e.target.value)} 
@@ -493,7 +495,7 @@ export default function SettingsPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Time Format</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">{t('time_format','Time Format')}</label>
                       <select 
                         value={settings.system.time_format} 
                         onChange={(e) => handleInputChange('system', 'time_format', e.target.value)} 

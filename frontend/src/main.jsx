@@ -4,9 +4,12 @@ import App from '@/App.jsx'
 import '@/index.css'
 import { initPush } from '@/firebase/messaging.js'
 import { initSocket } from '@/realtime/socket.js'
+import { I18nProvider } from '@/i18n/index.jsx'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
-    <App />
+    <I18nProvider>
+      <App />
+    </I18nProvider>
 ) 
 
 // Disable service workers and aggressively recover from stale chunk caches
