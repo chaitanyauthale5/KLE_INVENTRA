@@ -24,6 +24,12 @@ export default function SuperClinics() {
     patientCount: 0,
     rating: null,
   });
+  const [clinicStaff, setClinicStaff] = useState([]);
+  const [showStaffModal, setShowStaffModal] = useState(false);
+  const [staffRole, setStaffRole] = useState(null);
+  const [staffLoading, setStaffLoading] = useState(false);
+  const [staffItems, setStaffItems] = useState([]);
+  const [clinicPatients, setClinicPatients] = useState([]);
 
   useEffect(() => {
     const run = async () => {
@@ -192,8 +198,36 @@ export default function SuperClinics() {
         patientCount: typeof summary?.totalPatients === 'number' ? summary.totalPatients : (Array.isArray(patients) ? patients.length : 0),
         rating,
       });
+      setClinicStaff(staffList);
+      setClinicPatients(Array.isArray(patients) ? patients : []);
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  const openStaffList = async (role) => {
+    if (!selectedClinic) return;
+    setStaffRole(role);
+    setShowStaffModal(true);
+    setStaffLoading(true);
+    try {
+      const id = selectedClinic._id || selectedClinic.id;
+      if (role === 'patient') {
+        let items = clinicPatients;
+        if (!Array.isArray(items) || items.length === 0) {
+          items = await Patient.filter({ hospital_id: id }).catch(() => []);
+        }
+        setStaffItems(items || []);
+      } else {
+        let items = clinicStaff;
+        if (!Array.isArray(items) || items.length === 0) {
+          items = await Hospital.listStaff(id).catch(() => []);
+        }
+        const filtered = (items || []).filter(s => (s.role || '').toLowerCase() === role);
+        setStaffItems(filtered);
+      }
+    } finally {
+      setStaffLoading(false);
     }
   };
 
@@ -375,7 +409,7 @@ export default function SuperClinics() {
 
       {/* Details Dialog */}
       <Dialog open={!!selectedClinic} onOpenChange={(open)=>{ if (!open) setSelectedClinic(null); }}>
-        <DialogContent className="sm:max-w-4xl w-full">
+        <DialogContent className="sm:max-w-4xl w-full min-h-[40vh] max-h-[85vh]">
           <DialogHeader>
             <DialogTitle>{selectedClinic?.name || 'Clinic Details'}</DialogTitle>
             <DialogDescription>
@@ -386,7 +420,7 @@ export default function SuperClinics() {
           {detailLoading ? (
             <div className="py-6">Loading details...</div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-gray-50 rounded-xl p-4">
                   <div className="text-xs text-gray-500 mb-1">Clinic Admin</div>
@@ -401,23 +435,45 @@ export default function SuperClinics() {
                 </div>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-blue-50 rounded-xl p-4 text-center">
+                <div className="bg-blue-50 rounded-xl p-4 text-center cursor-pointer hover:bg-blue-100" onClick={() => openStaffList('doctor')}>
                   <div className="text-xs text-gray-500 mb-1">Doctors</div>
                   <div className="text-xl font-bold text-blue-700">{clinicDetails.doctorCount}</div>
                 </div>
-                <div className="bg-teal-50 rounded-xl p-4 text-center">
+                <div className="bg-teal-50 rounded-xl p-4 text-center cursor-pointer hover:bg-teal-100" onClick={() => openStaffList('therapist')}>
                   <div className="text-xs text-gray-500 mb-1">Therapists</div>
                   <div className="text-xl font-bold text-teal-700">{clinicDetails.therapistCount}</div>
                 </div>
-                <div className="bg-orange-50 rounded-xl p-4 text-center">
+                <div className="bg-orange-50 rounded-xl p-4 text-center cursor-pointer hover:bg-orange-100" onClick={() => openStaffList('office_executive')}>
                   <div className="text-xs text-gray-500 mb-1">Office Executives</div>
                   <div className="text-xl font-bold text-orange-700">{clinicDetails.officeExecCount}</div>
                 </div>
-                <div className="bg-purple-50 rounded-xl p-4 text-center">
+                <div className="bg-purple-50 rounded-xl p-4 text-center cursor-pointer hover:bg-purple-100" onClick={() => openStaffList('patient')}>
                   <div className="text-xs text-gray-500 mb-1">Patients</div>
                   <div className="text-xl font-bold text-purple-700">{clinicDetails.patientCount}</div>
                 </div>
               </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showStaffModal} onOpenChange={(open)=>{ setShowStaffModal(open); if (!open) { setStaffItems([]); setStaffRole(null); } }}>
+        <DialogContent className="sm:max-w-md w-full min-h-[50vh] max-h-[85vh]">
+          <DialogHeader>
+            <DialogTitle>{staffRole === 'doctor' ? 'Doctors' : staffRole === 'therapist' ? 'Therapists' : staffRole === 'office_executive' ? 'Office Executives' : staffRole === 'patient' ? 'Patients' : 'Staff'}</DialogTitle>
+            <DialogDescription>{selectedClinic?.name || ''}</DialogDescription>
+          </DialogHeader>
+          {staffLoading ? (
+            <div className="py-4">Loading...</div>
+          ) : (
+            <div className="max-h-[60vh] overflow-y-auto divide-y pr-1">
+              {staffItems.length ? staffItems.map((s) => (
+                <div key={s.id || s._id || s.email} className="py-2 text-sm text-gray-800">
+                  {s.full_name || s.name || s.email}
+                </div>
+              )) : (
+                <div className="py-4 text-sm text-gray-500">No staff found.</div>
+              )}
             </div>
           )}
         </DialogContent>

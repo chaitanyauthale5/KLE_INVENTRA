@@ -32,6 +32,7 @@ import Hospitals from "./Hospitals";
 import SuperClinics from "./SuperClinics";
 import SuperFinances from "./SuperFinances";
 import ClinicInventory from "./ClinicInventory.jsx";
+import FinanceManagement from "./FinanceManagement.jsx";
 
 import PatientProgress from "./PatientProgress";
 import PatientAppointments from "./PatientAppointments";
@@ -74,6 +75,7 @@ const PAGES = {
     ClinicFeedbacks: ClinicFeedbacks,
     Appointments: PatientAppointments,
     ClinicInventory: ClinicInventory,
+    FinanceManagement: FinanceManagement,
 };
 
 function _getCurrentPage(url) {
@@ -134,6 +136,9 @@ function PagesContent() {
                 {/* Clinic Inventory */}
                 <Route path="/ClinicInventory" element={<RoleGuard roles={["clinic_admin","office_executive","super_admin"]}> <ClinicInventory /> </RoleGuard>} />
                 <Route path="/clinicinventory" element={<RoleGuard roles={["clinic_admin","office_executive","super_admin"]}> <ClinicInventory /> </RoleGuard>} />
+
+                {/* Finance Management */}
+                <Route path="/FinanceManagement" element={<RoleGuard roles={["clinic_admin","hospital_admin","office_executive"]}> <FinanceManagement /> </RoleGuard>} />
 
                 <Route path="/Hospitals" element={<RoleGuard roles={["super_admin","clinic_admin"]}> <Hospitals /> </RoleGuard>} />
                 <Route path="/SuperClinics" element={<RoleGuard roles={["super_admin"]}> <SuperClinics /> </RoleGuard>} />

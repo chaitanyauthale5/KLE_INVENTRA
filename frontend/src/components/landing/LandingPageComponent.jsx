@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { User } from '@/services';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -216,7 +216,6 @@ export default function LandingPageComponent({ onLogin, onNavigateToApp }) {
   const [showDemoVideo, setShowDemoVideo] = useState(false);
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState(null);
   const [demoImageUrl] = useState("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAwIiBoZWlnaHQ9IjQ1MCIgdmlld0JveD0iMCAwIDgwMCA0NTAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHJlY3Qgd2lkdGg9IjgwMCIgaGVpZ2h0PSI0NTAiIGZpbGw9IiM2MEE1RkMiLz4KICA8dGV4dCB4PSIzMjAiIHk9IjIzNSIgZm9udC1mYW1pbHk9ImludGVyc3RhdGUiIGZvbnQtd2VpZ2h0PSI3MDAiIGZvbnQtc2l6ZT0iNDgiIGZpbGw9IiNGRkZGRkYiPkRlbW8gVmlkZW88L3RleHQ+CiAgPHBhdGggZD0iTTM3NSAyMjVMNDI1IDI1MEwzNzUgMjc1VjIyNSIgZmlsbD0id2hpdGUiLz4KPC9zdmc+");
-  const [showWelcomeNotification, setShowWelcomeNotification] = useState(false);
   const [authMode, setAuthMode] = useState(null); // 'signin' | 'signup' | null
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
@@ -238,20 +237,7 @@ export default function LandingPageComponent({ onLogin, onNavigateToApp }) {
     }
   };
 
-  useEffect(() => {
-    const timer1 = setTimeout(() => {
-      setShowWelcomeNotification(true);
-    }, 1000); // Show after 1 second
-
-    const timer2 = setTimeout(() => {
-      setShowWelcomeNotification(false);
-    }, 9000); // Hide after 9 seconds (1s delay + 8s display)
-
-    return () => {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-    };
-  }, []);
+  
 
   // Load current user to determine auth state
   useEffect(() => {
@@ -355,30 +341,7 @@ export default function LandingPageComponent({ onLogin, onNavigateToApp }) {
 
       <FloatingParticles />
 
-      {/* Welcome Notification */}
-      <AnimatePresence>
-        {showWelcomeNotification && (
-          <motion.div
-            initial={{ opacity: 0, x: 100 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 100 }}
-            transition={{ type: "spring", stiffness: 100, damping: 15 }}
-            className="fixed top-6 right-6 z-50 bg-gradient-to-r from-blue-500 to-green-500 text-white rounded-xl shadow-lg p-4 flex items-center gap-3 max-w-sm pointer-events-auto"
-          >
-            <Sparkles className="w-6 h-6 text-yellow-300" />
-            <div className="flex-grow">
-              <h3 className="font-bold text-lg mb-1">Welcome to AyurSutra!</h3>
-              <p className="text-sm">Explore authentic Ayurvedic healthcare.</p>
-            </div>
-            <button
-              onClick={() => setShowWelcomeNotification(false)}
-              className="p-1 rounded-full hover:bg-white/20 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      
 
       {/* Fixed Mobile Header */}
       <header className="relative z-20 flex items-center justify-between px-4 sm:px-6 py-4 gap-4">

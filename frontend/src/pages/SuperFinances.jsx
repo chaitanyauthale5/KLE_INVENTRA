@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { SuperAdmin } from "@/services";
-import { IndianRupee, Filter, RefreshCcw } from "lucide-react";
+import { IndianRupee, RefreshCcw } from "lucide-react";
 import PropTypes from 'prop-types';
 
 export default function SuperFinances({ currentUser }) {
@@ -55,15 +55,15 @@ export default function SuperFinances({ currentUser }) {
   }), [data]);
 
   return (
-    <div className="p-4 md:p-6">
-      <div className="flex items-center justify-between mb-4">
+    <div className="p-4 md:p-6 space-y-4">
+      <div className="flex items-center justify-between mb-2">
         <h1 className="text-xl md:text-2xl font-bold">Finances</h1>
         <button onClick={()=>setPage(1)} className="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center gap-2">
           <RefreshCcw className="w-4 h-4" /> Refresh
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 mb-4">
+      <div className="bg-gradient-to-br from-white to-slate-50 rounded-2xl ring-1 ring-slate-200 shadow p-4 mb-2">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
           <div>
             <label className="block text-xs text-gray-500">Clinic</label>
@@ -106,42 +106,25 @@ export default function SuperFinances({ currentUser }) {
             { title: 'Income', value: summary.income },
             { title: 'Expense', value: summary.expense },
             { title: 'Net', value: summary.net },
-          ].map((k) => (
-            <div key={k.title} className="rounded-xl p-3 bg-gray-50 border border-gray-200">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-600">{k.title}</p>
-                <IndianRupee className="w-4 h-4 text-gray-400" />
+          ].map((k) => {
+            const isInc = k.title === 'Income';
+            const isExp = k.title === 'Expense';
+            const wrap = isInc ? 'from-emerald-50 to-white ring-emerald-100' : isExp ? 'from-rose-50 to-white ring-rose-100' : 'from-sky-50 to-white ring-sky-100';
+            const txt = isInc ? 'text-emerald-700' : isExp ? 'text-rose-700' : 'text-sky-700';
+            return (
+              <div key={k.title} className={`rounded-xl p-3 bg-gradient-to-br ${wrap} ring-1 border-0 shadow-sm`}>
+                <div className="flex items-center justify-between">
+                  <p className={`text-sm ${txt}`}>{k.title}</p>
+                  <IndianRupee className={`w-4 h-4 ${txt}`} />
+                </div>
+                <p className={`text-xl font-semibold mt-1 ${txt}`}>₹{Number(k.value||0).toLocaleString()}</p>
               </div>
-              <p className="text-xl font-semibold mt-1">₹{Number(k.value||0).toLocaleString()}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm">
-        <div className="flex items-center justify-between p-3 text-sm text-gray-600">
-          <span className="flex items-center gap-2"><Filter className="w-4 h-4" />Transactions</span>
-          <span>Page {data.page} / {Math.max(1, Math.ceil((data.total||0) / (data.limit||20)))}</span>
-        </div>
-        <div className="divide-y">
-          {(data.items||[]).map((t, idx) => (
-            <div key={idx} className="p-4 text-sm flex items-center justify-between">
-              <div>
-                <p className="font-medium">{t.category || t.type}</p>
-                <p className="text-xs text-gray-500">{new Date(t.created_at || t.createdAt).toLocaleString()} · {t.method || 'cash'}{t.notes ? ` · ${t.notes}` : ''}</p>
-              </div>
-              <div className={`font-semibold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>₹{Number(t.amount||0).toLocaleString()}</div>
-            </div>
-          ))}
-          {(!data.items || data.items.length===0) && (
-            <div className="p-6 text-center text-gray-500 text-sm">No transactions found.</div>
-          )}
-        </div>
-        <div className="flex items-center justify-between p-3">
-          <button disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))} className="text-sm px-3 py-1.5 rounded bg-gray-100 disabled:opacity-50">Prev</button>
-          <button disabled={(data.page||1) >= Math.ceil((data.total||0)/(data.limit||20))} onClick={()=>setPage(p=>p+1)} className="text-sm px-3 py-1.5 rounded bg-gray-100 disabled:opacity-50">Next</button>
-        </div>
-      </div>
+      {/* No transaction list in Super Admin view */}
     </div>
   );
 }

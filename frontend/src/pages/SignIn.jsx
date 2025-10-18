@@ -89,7 +89,7 @@ export default function SignIn() {
       <div className="relative z-10 w-full max-w-md mx-auto mt-6 sm:mt-10">
         <div className="p-[1px] rounded-2xl bg-gradient-to-r from-blue-400/40 via-emerald-300/40 to-purple-400/40">
           <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl border border-white/40 p-6">
-            <h1 className="text-2xl font-bold text-gray-800 mb-2">Welcome back</h1>
+            <h1 className="text-2xl font-bold text-gray-800 mb-2">Welcome</h1>
             <p className="text-gray-500 mb-6">Sign in to continue to AyurSutra</p>
 
             {error && (

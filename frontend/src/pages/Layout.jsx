@@ -29,6 +29,7 @@ const clinicAdminNavItems = [
   { title: "Patients", url: "Patients", icon: Users },
   { title: "Doctors & Staff", url: "Staff", icon: UserCheck },
   { title: "Clinic Inventory", url: "ClinicInventory", icon: Building },
+  { title: "Finance", url: "FinanceManagement", icon: BarChart3 },
   { title: "Scheduled Therapies", url: "TherapyScheduling", icon: Calendar },
   { title: "Reports", url: "Reports", icon: FileText },
   { title: "Notifications", url: "Notifications", icon: Bell }, 
@@ -58,6 +59,7 @@ const officeExecutiveNavItems = [
   { title: "Patient Management", url: "Patients", icon: Users },
   { title: "Appointments", url: "OfficeAppointments", icon: Calendar },
   { title: "Therapy Scheduling", url: "TherapyScheduling", icon: Calendar },
+  { title: "Finance", url: "FinanceManagement", icon: BarChart3 },
   { title: "Notifications", url: "Notifications", icon: Bell },
   { title: "Clinic Inventory", url: "ClinicInventory", icon: Building },
 ];
@@ -65,6 +67,7 @@ const officeExecutiveNavItems = [
 const navMap = {
   super_admin: superAdminNavItems,
   clinic_admin: clinicAdminNavItems,
+  hospital_admin: clinicAdminNavItems,
   doctor: doctorNavItems,
   patient: patientNavItems,
   office_executive: officeExecutiveNavItems,
@@ -356,8 +359,9 @@ const AppShell = ({ currentUser, handleLogout, children, navigateToLanding }) =>
 
             {/* Profile Menu, Patient Notifications & Mobile Menu Trigger */}
             <div className="flex items-center gap-2">
-              {/* Notifications bell (incoming only) - shown for all roles */}
-              <div className="relative notifications-dropdown-container">
+              {/* Notifications bell hidden for super_admin */}
+              {currentUser?.role !== 'super_admin' && (
+                <div className="relative notifications-dropdown-container">
                   <button
                     onClick={(e) => { e.stopPropagation(); setIsNotifOpen(!isNotifOpen); }}
                     className="p-2 md:p-3 bg-white/15 rounded-2xl text-white hover:bg-white/25 transition-colors relative border border-white/20 shadow-lg"
@@ -417,6 +421,7 @@ const AppShell = ({ currentUser, handleLogout, children, navigateToLanding }) =>
                     )}
                   </AnimatePresence>
                 </div>
+              )}
               <div className="relative profile-dropdown-container">
                 <button
                   onClick={(e) => {
