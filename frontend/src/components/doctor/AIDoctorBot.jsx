@@ -36,7 +36,7 @@ export default function AIDoctorBot() {
   const [selectedLanguage, setSelectedLanguage] = useState('en');
   const [transcript, setTranscript] = useState('');
   const [lastResponse, setLastResponse] = useState('');
-  const [isMuted, setIsMuted] = useState(true);
+  const [isMuted, setIsMuted] = useState(false);
   const [showLanguageSelector, setShowLanguageSelector] = useState(false);
   const [pulseIntensity, setPulseIntensity] = useState(0);
   const [conversationHistory, setConversationHistory] = useState([]);
