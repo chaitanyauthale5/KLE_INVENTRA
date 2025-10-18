@@ -346,6 +346,16 @@ export const TherapySession = {
       return s;
     });
   },
+  async summary(query = {}) {
+    const qs = new URLSearchParams(query).toString();
+    const data = await api(`/api/sessions/summary${qs ? `?${qs}` : ''}`);
+    return {
+      today: Number(data?.today) || 0,
+      week: Number(data?.week) || 0,
+      completed: Number(data?.completed) || 0,
+      pending: Number(data?.pending) || 0,
+    };
+  },
   async create(body) {
     // Accepts: { hospital_id, patient_id, doctor_id, therapy_type, scheduled_at | (scheduled_date, scheduled_time), duration_min, notes }
     const data = await api('/api/sessions', { method: 'POST', body });
