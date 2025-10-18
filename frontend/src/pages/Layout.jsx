@@ -59,10 +59,10 @@ const officeExecutiveNavItems = [
   { title: "Office Executive Dashboard", url: "OfficeExecutiveDashboard", icon: Home },
   { title: "Patient Management", url: "Patients", icon: Users },
   { title: "Appointments", url: "OfficeAppointments", icon: Calendar },
+  { title: "Clinic Inventory", url: "ClinicInventory", icon: Building },
   { title: "Therapy Scheduling", url: "TherapyScheduling", icon: Calendar },
   { title: "Finance", url: "FinanceManagement", icon: BarChart3 },
   { title: "Notifications", url: "Notifications", icon: Bell },
-  { title: "Clinic Inventory", url: "ClinicInventory", icon: Building },
 ];
 
 const navMap = {
